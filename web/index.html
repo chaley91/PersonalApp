@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="CalorieTracker">
+    <meta name="theme-color" content="#007AFF">
+
+    <title>CalorieTracker - AI Calorie Tracking</title>
+
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <link rel="icon" type="image/png" href="icons/icon-192.png">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Tab Navigation -->
+        <nav class="tab-bar">
+            <button class="tab-button active" data-tab="add-meal">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="16"/>
+                    <line x1="8" y1="12" x2="16" y2="12"/>
+                </svg>
+                <span>Add Meal</span>
+            </button>
+            <button class="tab-button" data-tab="history">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="20" x2="18" y2="10"/>
+                    <line x1="12" y1="20" x2="12" y2="4"/>
+                    <line x1="6" y1="20" x2="6" y2="14"/>
+                </svg>
+                <span>History</span>
+            </button>
+            <button class="tab-button" data-tab="settings">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M12 1v6m0 6v6m9-9h-6m-6 0H3"/>
+                </svg>
+                <span>Settings</span>
+            </button>
+        </nav>
+
+        <!-- Add Meal Tab -->
+        <div id="add-meal-tab" class="tab-content active">
+            <header class="app-header">
+                <h1>Add Meal</h1>
+                <button id="clear-conversation-btn" class="header-button" style="display: none;">Clear</button>
+            </header>
+
+            <div class="conversation-container" id="conversation-container">
+                <div class="conversation-empty" id="conversation-empty">
+                    <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                    </svg>
+                    <p>Start tracking your meals!</p>
+                    <p class="hint">Type what you ate or drank</p>
+                </div>
+                <div class="conversation-messages" id="conversation-messages"></div>
+            </div>
+
+            <div class="input-container">
+                <div id="error-message" class="error-message" style="display: none;"></div>
+                <div class="input-row">
+                    <textarea
+                        id="food-input"
+                        placeholder="What did you eat or drink?"
+                        rows="1"
+                    ></textarea>
+                    <button id="send-btn" class="send-button" disabled>
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                            <circle cx="12" cy="12" r="12"/>
+                            <path d="M12 8l0 8M8 12l8 0" stroke="white" stroke-width="2"/>
+                        </svg>
+                    </button>
+                </div>
+                <button id="save-entry-btn" class="save-button" style="display: none;">Save Entry</button>
+            </div>
+        </div>
+
+        <!-- History Tab -->
+        <div id="history-tab" class="tab-content">
+            <header class="app-header">
+                <button id="date-picker-btn" class="date-button">
+                    <span id="selected-date">Today</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                        <line x1="16" y1="2" x2="16" y2="6"/>
+                        <line x1="8" y1="2" x2="8" y2="6"/>
+                        <line x1="3" y1="10" x2="21" y2="10"/>
+                    </svg>
+                </button>
+                <div class="date-nav">
+                    <button id="prev-day-btn" class="nav-button">‹</button>
+                    <button id="next-day-btn" class="nav-button">›</button>
+                </div>
+            </header>
+
+            <div class="history-container">
+                <div class="daily-summary" id="daily-summary">
+                    <div class="summary-item">
+                        <div class="summary-label">Total Calories</div>
+                        <div class="summary-value" id="total-calories">0</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-label">Meals</div>
+                        <div class="summary-value" id="meal-count">0</div>
+                    </div>
+                </div>
+                <div id="meals-list" class="meals-list"></div>
+            </div>
+        </div>
+
+        <!-- Settings Tab -->
+        <div id="settings-tab" class="tab-content">
+            <header class="app-header">
+                <h1>Settings</h1>
+            </header>
+
+            <div class="settings-container">
+                <div class="settings-section">
+                    <h2>Anthropic API</h2>
+                    <div class="input-group">
+                        <label for="api-key-input">API Key</label>
+                        <div class="api-key-input-wrapper">
+                            <input
+                                type="password"
+                                id="api-key-input"
+                                placeholder="Enter your Anthropic API key"
+                            >
+                            <button id="toggle-api-key" class="toggle-visibility">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                    <circle cx="12" cy="12" r="3"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <p class="input-help">Your API key is stored securely in your browser and never sent anywhere except to Anthropic.</p>
+                    </div>
+                    <button id="api-key-info-btn" class="info-button">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <line x1="12" y1="16" x2="12" y2="12"/>
+                            <line x1="12" y1="8" x2="12.01" y2="8"/>
+                        </svg>
+                        How to get an API key
+                    </button>
+                </div>
+
+                <div class="settings-section">
+                    <h2>About</h2>
+                    <div class="info-row">
+                        <span>App Version</span>
+                        <span class="info-value">1.0.0</span>
+                    </div>
+                    <a href="https://www.anthropic.com/privacy" target="_blank" class="info-row link-row">
+                        <span>Privacy Policy</span>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                            <polyline points="15 3 21 3 21 9"/>
+                            <line x1="10" y1="14" x2="21" y2="3"/>
+                        </svg>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Date Picker Modal -->
+        <div id="date-picker-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Select Date</h2>
+                    <button id="close-date-picker" class="close-button">&times;</button>
+                </div>
+                <input type="date" id="date-input" class="date-picker">
+                <button id="date-done-btn" class="primary-button">Done</button>
+            </div>
+        </div>
+
+        <!-- API Key Info Modal -->
+        <div id="api-key-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Getting Your API Key</h2>
+                    <button id="close-api-modal" class="close-button">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h3>Visit Anthropic Console</h3>
+                            <p>Go to console.anthropic.com and sign in or create an account</p>
+                        </div>
+                    </div>
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h3>Navigate to API Keys</h3>
+                            <p>Click on 'API Keys' in the left sidebar</p>
+                        </div>
+                    </div>
+                    <div class="step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h3>Create New Key</h3>
+                            <p>Click 'Create Key' and give it a name like 'CalorieTracker'</p>
+                        </div>
+                    </div>
+                    <div class="step">
+                        <div class="step-number">4</div>
+                        <div class="step-content">
+                            <h3>Copy and Paste</h3>
+                            <p>Copy the generated API key and paste it in Settings</p>
+                        </div>
+                    </div>
+                    <div class="info-box">
+                        <p><strong>Important Notes:</strong></p>
+                        <ul>
+                            <li>Your API key is stored only in your browser</li>
+                            <li>Each estimate costs approximately $0.01-0.02</li>
+                            <li>New accounts get $5 in free credits</li>
+                        </ul>
+                    </div>
+                    <a href="https://console.anthropic.com" target="_blank" class="primary-button">Visit Anthropic Console</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Spinner -->
+        <div id="loading-spinner" class="spinner" style="display: none;">
+            <div class="spinner-circle"></div>
+        </div>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>

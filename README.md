@@ -1,6 +1,33 @@
-# CalorieTracker - AI-Powered Calorie Tracking for iOS
+# CalorieTracker - AI-Powered Calorie Tracking
 
-A simple, intelligent iPhone app that uses Claude AI to estimate calories from natural language food descriptions. Just type what you ate, and the app handles the rest - including asking clarifying questions when needed.
+A simple, intelligent app that uses Claude AI to estimate calories from natural language food descriptions. Just type what you ate, and the app handles the rest - including asking clarifying questions when needed.
+
+## 📱 Two Versions Available
+
+### 🌐 **Progressive Web App (PWA)** - Develop on Windows!
+**Location:** `/web` folder
+**Documentation:** [PWA_README.md](PWA_README.md)
+
+✅ Develop on Windows PC
+✅ Works on iPhone & Android
+✅ No Mac required
+✅ Deploy for free (Netlify, Vercel)
+✅ Same features as iOS version
+
+👉 **If you have a Windows PC, start with the PWA version!**
+
+### 🍎 **Native iOS App (Swift/SwiftUI)**
+**Location:** `/CalorieTracker` folder
+**Documentation:** Below
+
+❗ Requires macOS and Xcode
+✅ Native iOS performance
+✅ Full system integration
+✅ App Store distribution
+
+---
+
+# iOS Native App Documentation
 
 ## Features
 
