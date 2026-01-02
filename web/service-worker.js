@@ -1,6 +1,6 @@
 // Service Worker for offline support and PWA functionality
 
-const CACHE_NAME = 'calorie-tracker-v2';
+const CACHE_NAME = 'calorie-tracker-v3';
 const urlsToCache = [
     '/',
     '/index.html',
@@ -13,6 +13,9 @@ const urlsToCache = [
 
 // Install event - cache resources
 self.addEventListener('install', (event) => {
+    // Force the waiting service worker to become the active service worker
+    self.skipWaiting();
+
     event.waitUntil(
         caches.open(CACHE_NAME)
             .then((cache) => {
@@ -25,50 +28,61 @@ self.addEventListener('install', (event) => {
     );
 });
 
-// Fetch event - serve from cache when offline
+// Fetch event - Network first, then cache for CSS and JS
 self.addEventListener('fetch', (event) => {
     // Skip cross-origin requests and API calls
     if (!event.request.url.startsWith(self.location.origin) ||
-        event.request.url.includes('anthropic.com')) {
+        event.request.url.includes('anthropic.com') ||
+        event.request.url.includes('netlify/functions')) {
         return;
     }
 
-    event.respondWith(
-        caches.match(event.request)
-            .then((response) => {
-                // Cache hit - return response
-                if (response) {
+    // Network-first strategy for CSS and JS files
+    if (event.request.url.endsWith('.css') ||
+        event.request.url.endsWith('.js') ||
+        event.request.url.endsWith('.html')) {
+        event.respondWith(
+            fetch(event.request)
+                .then((response) => {
+                    // Update cache with new version
+                    const responseClone = response.clone();
+                    caches.open(CACHE_NAME).then((cache) => {
+                        cache.put(event.request, responseClone);
+                    });
                     return response;
-                }
-
-                // Clone the request
-                const fetchRequest = event.request.clone();
-
-                return fetch(fetchRequest).then((response) => {
-                    // Check if valid response
-                    if (!response || response.status !== 200 || response.type !== 'basic') {
+                })
+                .catch(() => {
+                    // Fall back to cache if network fails
+                    return caches.match(event.request);
+                })
+        );
+    } else {
+        // Cache-first for other resources
+        event.respondWith(
+            caches.match(event.request)
+                .then((response) => {
+                    if (response) {
                         return response;
                     }
-
-                    // Clone the response
-                    const responseToCache = response.clone();
-
-                    caches.open(CACHE_NAME)
-                        .then((cache) => {
+                    return fetch(event.request).then((response) => {
+                        if (!response || response.status !== 200 || response.type !== 'basic') {
+                            return response;
+                        }
+                        const responseToCache = response.clone();
+                        caches.open(CACHE_NAME).then((cache) => {
                             cache.put(event.request, responseToCache);
                         });
-
-                    return response;
-                });
-            })
-            .catch(() => {
-                // Return offline page if available
-                return caches.match('/index.html');
-            })
-    );
+                        return response;
+                    });
+                })
+                .catch(() => {
+                    return caches.match('/index.html');
+                })
+        );
+    }
 });
 
-// Activate event - clean up old caches
+// Activate event - clean up old caches and take control immediately
 self.addEventListener('activate', (event) => {
     const cacheWhitelist = [CACHE_NAME];
 
@@ -82,6 +96,9 @@ self.addEventListener('activate', (event) => {
                     }
                 })
             );
+        }).then(() => {
+            // Take control of all pages immediately
+            return self.clients.claim();
         })
     );
 });
