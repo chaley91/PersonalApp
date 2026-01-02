@@ -1,4 +1,5 @@
-const fetch = require('node-fetch');
+// Netlify Functions run on Node 18+ which has built-in fetch
+// No need to import node-fetch
 
 exports.handler = async (event, context) => {
   // Only allow POST requests
