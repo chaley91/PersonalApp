@@ -1,0 +1,142 @@
+const express = require('express');
+const cors = require('cors');
+
+const app = express();
+const PORT = 3000;
+
+// Middleware
+app.use(cors()); // Allow requests from the frontend
+app.use(express.json()); // Parse JSON bodies
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+    res.json({ status: 'Server is running!' });
+});
+
+// Proxy endpoint for Anthropic API
+app.post('/api/estimate-calories', async (req, res) => {
+    const { apiKey, foodDescription, conversationContext } = req.body;
+
+    if (!apiKey) {
+        return res.status(400).json({ error: 'API key is required' });
+    }
+
+    if (!foodDescription) {
+        return res.status(400).json({ error: 'Food description is required' });
+    }
+
+    // Build the prompt
+    let prompt = `You are a nutrition expert helping estimate calories for food and drinks. The user has described what they consumed.
+
+User's input: "${foodDescription}"`;
+
+    if (conversationContext) {
+        prompt += `\n\nPrevious conversation context:\n${conversationContext}`;
+    }
+
+    prompt += `
+
+Please analyze this food/drink and provide:
+1. A calorie estimate (provide a range if uncertain, e.g., 200-300 calories)
+2. If you need clarification about portion size, preparation method, or specific variant, ask ONE specific question
+3. A brief explanation of your estimate
+
+Respond in this exact JSON format:
+{
+    "caloriesMin": <minimum calories as integer>,
+    "caloriesMax": <maximum calories as integer>,
+    "needsClarification": <true/false>,
+    "clarificationQuestion": "<your question or null>",
+    "analysis": "<brief explanation>"
+}
+
+Important:
+- Be reasonable with estimates - use common portion sizes if not specified
+- Only ask for clarification if it would significantly impact the estimate (>50 calorie difference)
+- For drinks, assume standard serving sizes unless otherwise specified
+- Provide ranges when uncertain rather than asking unnecessary questions`;
+
+    try {
+        // Call Anthropic API
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': apiKey,
+                'anthropic-version': '2023-06-01'
+            },
+            body: JSON.stringify({
+                model: 'claude-sonnet-4-5-20250929',
+                max_tokens: 1024,
+                messages: [
+                    {
+                        role: 'user',
+                        content: prompt
+                    }
+                ]
+            })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Anthropic API error:', response.status, errorText);
+
+            if (response.status === 401) {
+                return res.status(401).json({ error: 'Invalid API key. Please check your API key in Settings.' });
+            }
+
+            return res.status(response.status).json({
+                error: `API request failed: ${response.statusText}`
+            });
+        }
+
+        const data = await response.json();
+
+        // Parse the response
+        if (!data.content || !data.content[0] || !data.content[0].text) {
+            return res.status(500).json({ error: 'Invalid response from Claude API' });
+        }
+
+        const text = data.content[0].text;
+
+        // Extract JSON from the response
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+            return res.status(500).json({ error: 'Could not parse calorie estimate from response' });
+        }
+
+        const estimate = JSON.parse(jsonMatch[0]);
+
+        // Validate required fields
+        if (
+            typeof estimate.caloriesMin !== 'number' ||
+            typeof estimate.caloriesMax !== 'number' ||
+            typeof estimate.needsClarification !== 'boolean' ||
+            typeof estimate.analysis !== 'string'
+        ) {
+            return res.status(500).json({ error: 'Invalid estimate format' });
+        }
+
+        // Send the parsed estimate back to the frontend
+        res.json({
+            caloriesMin: estimate.caloriesMin,
+            caloriesMax: estimate.caloriesMax,
+            needsClarification: estimate.needsClarification,
+            clarificationQuestion: estimate.clarificationQuestion || null,
+            analysis: estimate.analysis
+        });
+
+    } catch (error) {
+        console.error('Server error:', error);
+        res.status(500).json({
+            error: `Failed to estimate calories: ${error.message}`
+        });
+    }
+});
+
+// Start server
+app.listen(PORT, () => {
+    console.log(`🚀 CalorieTracker backend server running on http://localhost:${PORT}`);
+    console.log(`📊 Health check: http://localhost:${PORT}/health`);
+    console.log(`🍔 API endpoint: http://localhost:${PORT}/api/estimate-calories`);
+});

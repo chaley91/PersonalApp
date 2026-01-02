@@ -1,0 +1,17 @@
+{
+  "name": "calorie-tracker-server",
+  "version": "1.0.0",
+  "description": "Backend proxy server for CalorieTracker PWA",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": ["calorie", "tracker", "proxy"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  }
+}
