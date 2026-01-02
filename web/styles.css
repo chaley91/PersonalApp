@@ -369,6 +369,7 @@ body {
     justify-content: space-between;
     align-items: start;
     margin-bottom: 8px;
+    padding-right: 80px; /* Make room for delete button */
 }
 
 .meal-description {
@@ -399,8 +400,8 @@ body {
 
 .delete-button {
     position: absolute;
-    top: 12px;
-    right: 12px;
+    top: 16px;
+    right: 16px;
     background: var(--error-color);
     color: white;
     border: none;
@@ -408,6 +409,11 @@ body {
     padding: 6px 12px;
     font-size: 12px;
     cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.delete-button:hover {
+    opacity: 0.9;
 }
 
 .meals-list-empty {
