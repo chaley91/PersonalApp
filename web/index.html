@@ -151,6 +151,52 @@
                 </div>
 
                 <div class="settings-section">
+                    <h2>Cloud Sync (Firebase)</h2>
+                    <p class="input-help" style="margin-bottom: 12px;">
+                        <span id="firebase-status">Not configured</span> -
+                        <a href="FIREBASE_SETUP.md" target="_blank" style="color: var(--primary-color);">Setup Guide</a>
+                    </p>
+
+                    <button id="firebase-config-btn" class="info-button" style="margin-bottom: 16px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <line x1="12" y1="8" x2="12" y2="16"/>
+                            <line x1="8" y1="12" x2="16" y2="12"/>
+                        </svg>
+                        Configure Firebase
+                    </button>
+
+                    <div id="firebase-config-form" style="display: none;">
+                        <div class="input-group">
+                            <label>API Key</label>
+                            <input type="text" id="firebase-api-key" placeholder="AIza..." autocomplete="off">
+                        </div>
+                        <div class="input-group">
+                            <label>Auth Domain</label>
+                            <input type="text" id="firebase-auth-domain" placeholder="your-app.firebaseapp.com" autocomplete="off">
+                        </div>
+                        <div class="input-group">
+                            <label>Project ID</label>
+                            <input type="text" id="firebase-project-id" placeholder="your-project-id" autocomplete="off">
+                        </div>
+                        <div class="input-group">
+                            <label>Storage Bucket</label>
+                            <input type="text" id="firebase-storage-bucket" placeholder="your-app.appspot.com" autocomplete="off">
+                        </div>
+                        <div class="input-group">
+                            <label>Messaging Sender ID</label>
+                            <input type="text" id="firebase-sender-id" placeholder="123456789" autocomplete="off">
+                        </div>
+                        <div class="input-group">
+                            <label>App ID</label>
+                            <input type="text" id="firebase-app-id" placeholder="1:123:web:abc" autocomplete="off">
+                        </div>
+                        <button id="save-firebase-btn" class="primary-button">Save & Enable Sync</button>
+                        <button id="cancel-firebase-btn" class="info-button" style="margin-top: 8px;">Cancel</button>
+                    </div>
+                </div>
+
+                <div class="settings-section">
                     <h2>About</h2>
                     <div class="info-row">
                         <span>App Version</span>

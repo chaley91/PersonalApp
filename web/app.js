@@ -1,6 +1,7 @@
 // Main application logic
 import { db } from './db.js';
 import { ClaudeService } from './claude-service.js';
+import { firebaseService } from './firebase-service.js';
 
 class CalorieTrackerApp {
     constructor() {
@@ -18,6 +19,15 @@ class CalorieTrackerApp {
     async init() {
         // Initialize database
         await db.init();
+
+        // Initialize Firebase (if configured)
+        const firebaseInitialized = await firebaseService.initialize();
+        if (firebaseInitialized) {
+            console.log('Firebase initialized - cloud sync enabled');
+            this.updateFirebaseStatus('✓ Syncing');
+        } else {
+            this.updateFirebaseStatus('Not configured');
+        }
 
         // Register service worker
         if ('serviceWorker' in navigator) {
@@ -219,8 +229,14 @@ class CalorieTrackerApp {
                 notes: this.currentEstimate.analysis
             };
 
-            // Save to database
+            // Save to local database
             await db.addMeal(meal);
+
+            // Also save to Firebase (if configured)
+            if (firebaseService.initialized) {
+                await firebaseService.addMeal(meal);
+                console.log('Meal synced to Firebase');
+            }
 
             // Reset conversation
             this.resetConversation();
@@ -420,6 +436,84 @@ class CalorieTrackerApp {
         infoBtn.addEventListener('click', () => {
             document.getElementById('api-key-modal').classList.add('active');
         });
+
+        // Firebase configuration
+        const firebaseConfigBtn = document.getElementById('firebase-config-btn');
+        const firebaseConfigForm = document.getElementById('firebase-config-form');
+        const saveFirebaseBtn = document.getElementById('save-firebase-btn');
+        const cancelFirebaseBtn = document.getElementById('cancel-firebase-btn');
+
+        // Load existing Firebase config
+        this.loadFirebaseConfig();
+
+        // Toggle config form
+        firebaseConfigBtn.addEventListener('click', () => {
+            const isVisible = firebaseConfigForm.style.display === 'block';
+            firebaseConfigForm.style.display = isVisible ? 'none' : 'block';
+            firebaseConfigBtn.textContent = isVisible ? '+ Configure Firebase' : '- Hide Configuration';
+        });
+
+        // Save Firebase config
+        saveFirebaseBtn.addEventListener('click', async () => {
+            const config = {
+                apiKey: document.getElementById('firebase-api-key').value.trim(),
+                authDomain: document.getElementById('firebase-auth-domain').value.trim(),
+                projectId: document.getElementById('firebase-project-id').value.trim(),
+                storageBucket: document.getElementById('firebase-storage-bucket').value.trim(),
+                messagingSenderId: document.getElementById('firebase-sender-id').value.trim(),
+                appId: document.getElementById('firebase-app-id').value.trim()
+            };
+
+            // Validate
+            if (!config.apiKey || !config.authDomain || !config.projectId) {
+                alert('Please fill in at least API Key, Auth Domain, and Project ID');
+                return;
+            }
+
+            // Save to localStorage
+            localStorage.setItem('firebaseApiKey', config.apiKey);
+            localStorage.setItem('firebaseAuthDomain', config.authDomain);
+            localStorage.setItem('firebaseProjectId', config.projectId);
+            localStorage.setItem('firebaseStorageBucket', config.storageBucket);
+            localStorage.setItem('firebaseMessagingSenderId', config.messagingSenderId);
+            localStorage.setItem('firebaseAppId', config.appId);
+
+            // Initialize Firebase
+            this.updateFirebaseStatus('Initializing...');
+            const initialized = await firebaseService.initialize();
+
+            if (initialized) {
+                this.updateFirebaseStatus('✓ Syncing');
+                this.showTemporaryMessage('Firebase sync enabled!');
+                firebaseConfigForm.style.display = 'none';
+                firebaseConfigBtn.textContent = '+ Configure Firebase';
+            } else {
+                this.updateFirebaseStatus('Configuration error');
+                alert('Failed to initialize Firebase. Check your configuration and try again.');
+            }
+        });
+
+        // Cancel config
+        cancelFirebaseBtn.addEventListener('click', () => {
+            firebaseConfigForm.style.display = 'none';
+            firebaseConfigBtn.textContent = '+ Configure Firebase';
+        });
+    }
+
+    loadFirebaseConfig() {
+        document.getElementById('firebase-api-key').value = localStorage.getItem('firebaseApiKey') || '';
+        document.getElementById('firebase-auth-domain').value = localStorage.getItem('firebaseAuthDomain') || '';
+        document.getElementById('firebase-project-id').value = localStorage.getItem('firebaseProjectId') || '';
+        document.getElementById('firebase-storage-bucket').value = localStorage.getItem('firebaseStorageBucket') || '';
+        document.getElementById('firebase-sender-id').value = localStorage.getItem('firebaseMessagingSenderId') || '';
+        document.getElementById('firebase-app-id').value = localStorage.getItem('firebaseAppId') || '';
+    }
+
+    updateFirebaseStatus(status) {
+        const statusElement = document.getElementById('firebase-status');
+        if (statusElement) {
+            statusElement.textContent = status;
+        }
     }
 
     // Modals
