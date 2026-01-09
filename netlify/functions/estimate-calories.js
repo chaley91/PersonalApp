@@ -33,7 +33,7 @@ exports.handler = async (event, context) => {
 User's input: "${foodDescription}"`;
 
     if (conversationContext) {
-      prompt += `\n\nPrevious conversation context:\n${conversationContext}`;
+      prompt += `\n\n${conversationContext}`;
     }
 
     prompt += `
@@ -42,6 +42,12 @@ Please analyze this food/drink and provide:
 1. A calorie estimate (provide a range if uncertain, e.g., 200-300 calories)
 2. If you need clarification about portion size, preparation method, or specific variant, ask ONE specific question
 3. A brief explanation of your estimate
+
+IMPORTANT - MEAL HISTORY REFERENCES:
+- If the user mentions "yesterday", "the same", "similar to what I had", or references a previous meal, look at the RECENT MEAL HISTORY above
+- When referencing a previous meal, use the EXACT SAME calorie estimate that was logged
+- For example, if user says "the same smoothie I had yesterday" and yesterday's history shows "strawberry banana smoothie (250-300 cal)", respond with the same 250-300 calorie range
+- Acknowledge the reference in your analysis (e.g., "Same as yesterday's smoothie: 250-300 calories")
 
 Respond in this exact JSON format:
 {
@@ -56,7 +62,8 @@ Important:
 - Be reasonable with estimates - use common portion sizes if not specified
 - Only ask for clarification if it would significantly impact the estimate (>50 calorie difference)
 - For drinks, assume standard serving sizes unless otherwise specified
-- Provide ranges when uncertain rather than asking unnecessary questions`;
+- Provide ranges when uncertain rather than asking unnecessary questions
+- When user references a previous meal, prioritize consistency over re-estimation`;
 
     // Call Anthropic API
     const response = await fetch('https://api.anthropic.com/v1/messages', {

@@ -139,10 +139,17 @@ class CalorieTrackerApp {
         document.getElementById('send-btn').disabled = true;
 
         try {
+            // Get recent meal history for context
+            const recentMeals = await db.getRecentMeals(14); // Last 14 days
+            const mealHistoryContext = this.formatMealHistory(recentMeals);
+
+            // Combine conversation context with meal history
+            const fullContext = mealHistoryContext + (this.conversationContext || '');
+
             // Get calorie estimate
             const estimate = await this.claudeService.estimateCalories(
                 input,
-                this.conversationContext || null
+                fullContext
             );
 
             this.currentEstimate = estimate;
@@ -166,6 +173,45 @@ class CalorieTrackerApp {
         } finally {
             this.isProcessing = false;
         }
+    }
+
+    formatMealHistory(meals) {
+        if (!meals || meals.length === 0) {
+            return '';
+        }
+
+        // Group meals by date
+        const mealsByDate = {};
+        meals.forEach(meal => {
+            if (!mealsByDate[meal.date]) {
+                mealsByDate[meal.date] = [];
+            }
+            mealsByDate[meal.date].push(meal);
+        });
+
+        // Format as readable history
+        let history = '=== RECENT MEAL HISTORY ===\n';
+        history += 'The user has logged these meals recently. Reference them when the user mentions "yesterday", "the same as", "similar to what I had", etc.\n\n';
+
+        const dates = Object.keys(mealsByDate).sort().reverse(); // Most recent first
+        const today = new Date().toISOString().split('T')[0];
+        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+        dates.slice(0, 10).forEach(date => { // Limit to last 10 days
+            const dayLabel = date === today ? 'Today' : date === yesterday ? 'Yesterday' : date;
+            history += `${dayLabel}:\n`;
+
+            mealsByDate[date].forEach(meal => {
+                const calorieRange = meal.caloriesMin === meal.caloriesMax
+                    ? `${meal.caloriesMin} cal`
+                    : `${meal.caloriesMin}-${meal.caloriesMax} cal`;
+                history += `  - ${meal.description} (${calorieRange})\n`;
+            });
+            history += '\n';
+        });
+
+        history += '=== END MEAL HISTORY ===\n\n';
+        return history;
     }
 
     addMessage(text, isUser) {

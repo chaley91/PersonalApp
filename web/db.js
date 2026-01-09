@@ -75,6 +75,38 @@ class Database {
         });
     }
 
+    async getRecentMeals(days = 14) {
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction([MEALS_STORE], 'readonly');
+            const store = transaction.objectStore(MEALS_STORE);
+            const index = store.index('timestamp');
+
+            // Calculate cutoff date
+            const cutoffDate = new Date();
+            cutoffDate.setDate(cutoffDate.getDate() - days);
+            const cutoffTimestamp = cutoffDate.getTime();
+
+            const request = index.openCursor(null, 'prev'); // newest first
+            const meals = [];
+
+            request.onsuccess = (event) => {
+                const cursor = event.target.result;
+                if (cursor) {
+                    if (cursor.value.timestamp >= cutoffTimestamp) {
+                        meals.push(cursor.value);
+                        cursor.continue();
+                    } else {
+                        resolve(meals);
+                    }
+                } else {
+                    resolve(meals);
+                }
+            };
+
+            request.onerror = () => reject(request.error);
+        });
+    }
+
     async deleteMeal(id) {
         return new Promise((resolve, reject) => {
             const transaction = this.db.transaction([MEALS_STORE], 'readwrite');
