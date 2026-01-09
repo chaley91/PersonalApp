@@ -23,8 +23,17 @@ class CalorieTrackerApp {
         // Initialize Firebase (if configured)
         const firebaseInitialized = await firebaseService.initialize();
         if (firebaseInitialized) {
-            console.log('Firebase initialized - cloud sync enabled');
-            this.updateFirebaseStatus('✓ Syncing');
+            console.log('Firebase initialized');
+            if (firebaseService.isSignedIn()) {
+                this.updateFirebaseStatus('✓ Syncing');
+                this.updateAuthUI();
+            } else {
+                this.updateFirebaseStatus('Not signed in');
+                // Show auth modal after a brief delay
+                setTimeout(() => {
+                    document.getElementById('auth-modal').classList.add('active');
+                }, 500);
+            }
         } else {
             this.updateFirebaseStatus('Not configured');
         }
@@ -42,6 +51,7 @@ class CalorieTrackerApp {
         this.setupHistory();
         this.setupSettings();
         this.setupModals();
+        this.setupAuth();
 
         // Load initial data
         this.loadHistory();
@@ -550,6 +560,142 @@ class CalorieTrackerApp {
                 }
             });
         });
+    }
+
+    // Auth
+    setupAuth() {
+        const authModal = document.getElementById('auth-modal');
+        const closeAuthModal = document.getElementById('close-auth-modal');
+
+        // Tab switching
+        const signinTabBtn = document.getElementById('signin-tab-btn');
+        const signupTabBtn = document.getElementById('signup-tab-btn');
+        const signinForm = document.getElementById('signin-form');
+        const signupForm = document.getElementById('signup-form');
+
+        signinTabBtn.addEventListener('click', () => {
+            signinTabBtn.classList.add('active');
+            signupTabBtn.classList.remove('active');
+            signinForm.style.display = 'block';
+            signupForm.style.display = 'none';
+        });
+
+        signupTabBtn.addEventListener('click', () => {
+            signupTabBtn.classList.add('active');
+            signinTabBtn.classList.remove('active');
+            signupForm.style.display = 'block';
+            signinForm.style.display = 'none';
+        });
+
+        // Close modal
+        closeAuthModal.addEventListener('click', () => {
+            authModal.classList.remove('active');
+        });
+
+        // Sign in
+        const signinBtn = document.getElementById('signin-btn');
+        signinBtn.addEventListener('click', async () => {
+            const email = document.getElementById('signin-email').value.trim();
+            const password = document.getElementById('signin-password').value;
+            const errorDiv = document.getElementById('signin-error');
+
+            errorDiv.style.display = 'none';
+
+            if (!email || !password) {
+                errorDiv.textContent = 'Please enter email and password';
+                errorDiv.style.display = 'block';
+                return;
+            }
+
+            signinBtn.disabled = true;
+            signinBtn.textContent = 'Signing in...';
+
+            const result = await firebaseService.signIn(email, password);
+
+            if (result.success) {
+                this.updateFirebaseStatus('✓ Syncing');
+                this.updateAuthUI();
+                authModal.classList.remove('active');
+                this.showTemporaryMessage('Signed in successfully!');
+
+                // Clear form
+                document.getElementById('signin-email').value = '';
+                document.getElementById('signin-password').value = '';
+            } else {
+                errorDiv.textContent = result.error;
+                errorDiv.style.display = 'block';
+            }
+
+            signinBtn.disabled = false;
+            signinBtn.textContent = 'Sign In';
+        });
+
+        // Sign up
+        const signupBtn = document.getElementById('signup-btn');
+        signupBtn.addEventListener('click', async () => {
+            const email = document.getElementById('signup-email').value.trim();
+            const password = document.getElementById('signup-password').value;
+            const confirmPassword = document.getElementById('signup-password-confirm').value;
+            const errorDiv = document.getElementById('signup-error');
+
+            errorDiv.style.display = 'none';
+
+            if (!email || !password || !confirmPassword) {
+                errorDiv.textContent = 'Please fill in all fields';
+                errorDiv.style.display = 'block';
+                return;
+            }
+
+            if (password !== confirmPassword) {
+                errorDiv.textContent = 'Passwords do not match';
+                errorDiv.style.display = 'block';
+                return;
+            }
+
+            if (password.length < 6) {
+                errorDiv.textContent = 'Password must be at least 6 characters';
+                errorDiv.style.display = 'block';
+                return;
+            }
+
+            signupBtn.disabled = true;
+            signupBtn.textContent = 'Creating account...';
+
+            const result = await firebaseService.signUp(email, password);
+
+            if (result.success) {
+                this.updateFirebaseStatus('✓ Syncing');
+                this.updateAuthUI();
+                authModal.classList.remove('active');
+                this.showTemporaryMessage('Account created successfully!');
+
+                // Clear form
+                document.getElementById('signup-email').value = '';
+                document.getElementById('signup-password').value = '';
+                document.getElementById('signup-password-confirm').value = '';
+            } else {
+                errorDiv.textContent = result.error;
+                errorDiv.style.display = 'block';
+            }
+
+            signupBtn.disabled = false;
+            signupBtn.textContent = 'Create Account';
+        });
+
+        // Close on backdrop click
+        authModal.addEventListener('click', (e) => {
+            if (e.target === authModal) {
+                authModal.classList.remove('active');
+            }
+        });
+    }
+
+    updateAuthUI() {
+        if (firebaseService.isSignedIn() && firebaseService.user) {
+            // Update Firebase status in settings
+            const email = firebaseService.user.email;
+            this.updateFirebaseStatus(`✓ Syncing (${email})`);
+        }
     }
 }
 

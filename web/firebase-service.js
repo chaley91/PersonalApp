@@ -1,6 +1,12 @@
 // Firebase configuration and initialization
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import {
+    getAuth,
+    createUserWithEmailAndPassword,
+    signInWithEmailAndPassword,
+    signOut,
+    onAuthStateChanged
+} from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { getFirestore, collection, addDoc, query, where, getDocs, deleteDoc, doc, orderBy, onSnapshot, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
 // Firebase configuration - users will replace these with their own values
@@ -42,15 +48,15 @@ class FirebaseService {
             this.auth = getAuth(this.app);
             this.db = getFirestore(this.app);
 
-            // Sign in anonymously
-            await signInAnonymously(this.auth);
-
             // Listen for auth state changes
             onAuthStateChanged(this.auth, (user) => {
                 this.user = user;
                 if (user) {
-                    console.log('User signed in:', user.uid);
+                    console.log('User signed in:', user.email || user.uid);
                     this.initialized = true;
+                } else {
+                    console.log('User signed out');
+                    this.initialized = false;
                 }
             });
 
@@ -59,6 +65,77 @@ class FirebaseService {
             console.error('Firebase initialization error:', error);
             return false;
         }
+    }
+
+    // Sign up with email and password
+    async signUp(email, password) {
+        if (!this.auth) {
+            throw new Error('Firebase not initialized');
+        }
+
+        try {
+            const userCredential = await createUserWithEmailAndPassword(this.auth, email, password);
+            this.user = userCredential.user;
+            this.initialized = true;
+            return { success: true, user: userCredential.user };
+        } catch (error) {
+            console.error('Sign up error:', error);
+            return { success: false, error: this.getErrorMessage(error) };
+        }
+    }
+
+    // Sign in with email and password
+    async signIn(email, password) {
+        if (!this.auth) {
+            throw new Error('Firebase not initialized');
+        }
+
+        try {
+            const userCredential = await signInWithEmailAndPassword(this.auth, email, password);
+            this.user = userCredential.user;
+            this.initialized = true;
+            return { success: true, user: userCredential.user };
+        } catch (error) {
+            console.error('Sign in error:', error);
+            return { success: false, error: this.getErrorMessage(error) };
+        }
+    }
+
+    // Sign out
+    async signOutUser() {
+        if (!this.auth) return;
+
+        try {
+            await signOut(this.auth);
+            this.user = null;
+            this.initialized = false;
+            this.cleanup();
+        } catch (error) {
+            console.error('Sign out error:', error);
+        }
+    }
+
+    // Get user-friendly error messages
+    getErrorMessage(error) {
+        switch (error.code) {
+            case 'auth/email-already-in-use':
+                return 'This email is already registered. Please sign in instead.';
+            case 'auth/invalid-email':
+                return 'Invalid email address.';
+            case 'auth/weak-password':
+                return 'Password should be at least 6 characters.';
+            case 'auth/user-not-found':
+                return 'No account found with this email.';
+            case 'auth/wrong-password':
+                return 'Incorrect password.';
+            default:
+                return error.message || 'Authentication failed. Please try again.';
+        }
+    }
+
+    // Check if user is signed in
+    isSignedIn() {
+        return this.initialized && this.user !== null;
     }
 
     // Save API key to Firestore

@@ -66,13 +66,13 @@ service cloud.firestore {
 
 3. Click **Publish**
 
-### Step 5: Enable Anonymous Authentication
+### Step 5: Enable Email/Password Authentication
 
 1. In the left sidebar, click **"Authentication"**
 2. Click **"Get started"**
 3. Click the **"Sign-in method"** tab
-4. Click **"Anonymous"**
-5. Toggle the **Enable** switch ON
+4. Click **"Email/Password"** in the list of providers
+5. Toggle the **"Enable"** switch ON (first toggle only, not "Email link")
 6. Click **Save**
 
 ### Step 6: Get Your Configuration
@@ -107,11 +107,23 @@ appId: "1:123456789:web:abc123"
    - App ID
 6. Click **"Save & Enable Sync"**
 
-### Step 8: Test It!
+### Step 8: Create Your Account
 
-1. Add a meal on your phone
-2. Open the app on your computer
-3. The meal should appear automatically! ✨
+1. After saving Firebase config, a **sign-in modal** will appear
+2. Click the **"Sign Up"** tab
+3. Enter your email and password (minimum 6 characters)
+4. Confirm your password
+5. Click **"Create Account"**
+6. You should see **"✓ Syncing (your@email.com)"** in Settings!
+
+### Step 9: Sign In on Other Devices
+
+1. **Open the app** on another device (laptop, tablet, etc.)
+2. Go to **Settings** → **Configure Firebase** (same 6 values)
+3. Click **"Save & Enable Sync"**
+4. In the sign-in modal, click **"Sign In"** tab
+5. Enter the **same email and password** from Step 8
+6. Your meals automatically appear! ✨
 
 ---
 
@@ -174,8 +186,9 @@ Firestore:
 
 ## 🔒 Privacy & Security
 
-- ✅ **Anonymous auth** - no email/password stored
+- ✅ **Email/password auth** - your credentials are securely hashed by Firebase
 - ✅ **User isolation** - you can only access your own data
+- ✅ **Cross-device sync** - same account on all devices
 - ✅ **Secure rules** - enforced by Firebase
 - ✅ **HTTPS only** - encrypted in transit
 - ✅ **Your control** - can export/delete anytime
