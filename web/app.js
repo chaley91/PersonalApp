@@ -28,8 +28,11 @@ class CalorieTrackerApp {
                 this.updateFirebaseStatus('✓ Syncing');
                 this.updateAuthUI();
 
-                // Sync local meals to Firestore in the background
-                this.syncLocalMealsToFirestore().catch(err => {
+                // Sync local meals to Firestore, then reload history
+                this.syncLocalMealsToFirestore().then(() => {
+                    console.log('Background sync completed, reloading history...');
+                    this.loadHistory();
+                }).catch(err => {
                     console.error('Background sync failed:', err);
                 });
             } else {
@@ -742,30 +745,57 @@ class CalorieTrackerApp {
 
     async syncLocalMealsToFirestore() {
         if (!firebaseService.isSignedIn()) {
+            console.log('Sync skipped: not signed in');
             return;
         }
 
         try {
             // Get all local meals from IndexedDB
             const localMeals = await db.getAllMeals();
+            console.log(`Found ${localMeals.length} local meals in IndexedDB`);
 
             if (localMeals.length === 0) {
                 console.log('No local meals to sync');
                 return;
             }
 
-            console.log(`Syncing ${localMeals.length} local meals to Firestore...`);
+            // Get all Firestore meals to check for duplicates
+            const firestoreMeals = await firebaseService.getAllMeals();
+            console.log(`Found ${firestoreMeals.length} meals in Firestore`);
 
-            // Upload each meal to Firestore
-            for (const meal of localMeals) {
-                // Remove the IndexedDB id before syncing
-                const { id, ...mealData } = meal;
-                await firebaseService.addMeal(mealData);
+            // Create a Set of Firestore meal signatures (timestamp + description)
+            const firestoreSignatures = new Set(
+                firestoreMeals.map(m => `${m.timestamp}_${m.foodDescription}`)
+            );
+
+            // Only sync meals that don't already exist in Firestore
+            const mealsToSync = localMeals.filter(meal => {
+                const signature = `${meal.timestamp}_${meal.foodDescription}`;
+                return !firestoreSignatures.has(signature);
+            });
+
+            console.log(`Syncing ${mealsToSync.length} new meals to Firestore (${localMeals.length - mealsToSync.length} already synced)...`);
+
+            if (mealsToSync.length === 0) {
+                console.log('All local meals already in Firestore');
+                return;
             }
 
-            console.log('Local meals synced to Firestore successfully');
+            // Upload each new meal to Firestore
+            let syncedCount = 0;
+            for (const meal of mealsToSync) {
+                // Remove the IndexedDB id before syncing
+                const { id, ...mealData } = meal;
+                const result = await firebaseService.addMeal(mealData);
+                if (result) {
+                    syncedCount++;
+                }
+            }
+
+            console.log(`✓ Successfully synced ${syncedCount} meals to Firestore`);
         } catch (error) {
             console.error('Error syncing local meals:', error);
+            throw error;
         }
     }
 
