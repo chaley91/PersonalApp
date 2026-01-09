@@ -292,15 +292,19 @@ class CalorieTrackerApp {
 
             // Save to local database
             await db.addMeal(meal);
+            console.log('Meal saved to IndexedDB');
 
             // Also save to Firebase (if configured)
             if (firebaseService.initialized) {
                 await firebaseService.addMeal(meal);
-                console.log('Meal synced to Firebase');
+                console.log('Meal synced to Firestore');
             }
 
             // Reset conversation
             this.resetConversation();
+
+            // Reload history to show the new meal
+            await this.loadHistory();
 
             // Show success feedback
             this.showTemporaryMessage('Meal saved successfully!');
