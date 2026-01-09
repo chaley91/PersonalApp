@@ -447,76 +447,16 @@ class CalorieTrackerApp {
             document.getElementById('api-key-modal').classList.add('active');
         });
 
-        // Firebase configuration
-        const firebaseConfigBtn = document.getElementById('firebase-config-btn');
-        const firebaseConfigForm = document.getElementById('firebase-config-form');
-        const saveFirebaseBtn = document.getElementById('save-firebase-btn');
-        const cancelFirebaseBtn = document.getElementById('cancel-firebase-btn');
-
-        // Load existing Firebase config
-        this.loadFirebaseConfig();
-
-        // Toggle config form
-        firebaseConfigBtn.addEventListener('click', () => {
-            const isVisible = firebaseConfigForm.style.display === 'block';
-            firebaseConfigForm.style.display = isVisible ? 'none' : 'block';
-            firebaseConfigBtn.textContent = isVisible ? '+ Configure Firebase' : '- Hide Configuration';
-        });
-
-        // Save Firebase config
-        saveFirebaseBtn.addEventListener('click', async () => {
-            const config = {
-                apiKey: document.getElementById('firebase-api-key').value.trim(),
-                authDomain: document.getElementById('firebase-auth-domain').value.trim(),
-                projectId: document.getElementById('firebase-project-id').value.trim(),
-                storageBucket: document.getElementById('firebase-storage-bucket').value.trim(),
-                messagingSenderId: document.getElementById('firebase-sender-id').value.trim(),
-                appId: document.getElementById('firebase-app-id').value.trim()
-            };
-
-            // Validate
-            if (!config.apiKey || !config.authDomain || !config.projectId) {
-                alert('Please fill in at least API Key, Auth Domain, and Project ID');
-                return;
-            }
-
-            // Save to localStorage
-            localStorage.setItem('firebaseApiKey', config.apiKey);
-            localStorage.setItem('firebaseAuthDomain', config.authDomain);
-            localStorage.setItem('firebaseProjectId', config.projectId);
-            localStorage.setItem('firebaseStorageBucket', config.storageBucket);
-            localStorage.setItem('firebaseMessagingSenderId', config.messagingSenderId);
-            localStorage.setItem('firebaseAppId', config.appId);
-
-            // Initialize Firebase
-            this.updateFirebaseStatus('Initializing...');
-            const initialized = await firebaseService.initialize();
-
-            if (initialized) {
-                this.updateFirebaseStatus('✓ Syncing');
-                this.showTemporaryMessage('Firebase sync enabled!');
-                firebaseConfigForm.style.display = 'none';
-                firebaseConfigBtn.textContent = '+ Configure Firebase';
-            } else {
-                this.updateFirebaseStatus('Configuration error');
-                alert('Failed to initialize Firebase. Check your configuration and try again.');
+        // Sign out button
+        const signOutBtn = document.getElementById('sign-out-btn');
+        signOutBtn.addEventListener('click', async () => {
+            if (confirm('Are you sure you want to sign out? Your data will remain saved locally.')) {
+                await firebaseService.signOutUser();
+                this.updateFirebaseStatus('Not signed in');
+                signOutBtn.style.display = 'none';
+                this.showTemporaryMessage('Signed out successfully');
             }
         });
-
-        // Cancel config
-        cancelFirebaseBtn.addEventListener('click', () => {
-            firebaseConfigForm.style.display = 'none';
-            firebaseConfigBtn.textContent = '+ Configure Firebase';
-        });
-    }
-
-    loadFirebaseConfig() {
-        document.getElementById('firebase-api-key').value = localStorage.getItem('firebaseApiKey') || '';
-        document.getElementById('firebase-auth-domain').value = localStorage.getItem('firebaseAuthDomain') || '';
-        document.getElementById('firebase-project-id').value = localStorage.getItem('firebaseProjectId') || '';
-        document.getElementById('firebase-storage-bucket').value = localStorage.getItem('firebaseStorageBucket') || '';
-        document.getElementById('firebase-sender-id').value = localStorage.getItem('firebaseMessagingSenderId') || '';
-        document.getElementById('firebase-app-id').value = localStorage.getItem('firebaseAppId') || '';
     }
 
     updateFirebaseStatus(status) {
@@ -691,10 +631,20 @@ class CalorieTrackerApp {
     }
 
     updateAuthUI() {
+        const signOutBtn = document.getElementById('sign-out-btn');
         if (firebaseService.isSignedIn() && firebaseService.user) {
             // Update Firebase status in settings
             const email = firebaseService.user.email;
             this.updateFirebaseStatus(`✓ Syncing (${email})`);
+            // Show sign-out button
+            if (signOutBtn) {
+                signOutBtn.style.display = 'block';
+            }
+        } else {
+            // Hide sign-out button
+            if (signOutBtn) {
+                signOutBtn.style.display = 'none';
+            }
         }
     }
 }

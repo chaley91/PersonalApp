@@ -9,14 +9,15 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { getFirestore, collection, addDoc, query, where, getDocs, deleteDoc, doc, orderBy, onSnapshot, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
-// Firebase configuration - users will replace these with their own values
+// Firebase configuration - hard-coded for convenience
 const firebaseConfig = {
-    apiKey: localStorage.getItem('firebaseApiKey') || '',
-    authDomain: localStorage.getItem('firebaseAuthDomain') || '',
-    projectId: localStorage.getItem('firebaseProjectId') || '',
-    storageBucket: localStorage.getItem('firebaseStorageBucket') || '',
-    messagingSenderId: localStorage.getItem('firebaseMessagingSenderId') || '',
-    appId: localStorage.getItem('firebaseAppId') || ''
+    apiKey: "AIzaSyCFWda9gZhuGpwhuknBUcOJ_Q0J8nMph-g",
+    authDomain: "calorietracker-87cdb.firebaseapp.com",
+    projectId: "calorietracker-87cdb",
+    storageBucket: "calorietracker-87cdb.firebasestorage.app",
+    messagingSenderId: "271472354686",
+    appId: "1:271472354686:web:a1d96a40f5f13f967c3f2f",
+    measurementId: "G-6W7TBQDMYM"
 };
 
 class FirebaseService {

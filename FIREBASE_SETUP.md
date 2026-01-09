@@ -75,55 +75,32 @@ service cloud.firestore {
 5. Toggle the **"Enable"** switch ON (first toggle only, not "Email link")
 6. Click **Save**
 
-### Step 6: Get Your Configuration
+### Step 6: You're Done with Firebase Setup! 🎉
 
-Go back to **Project Settings** (gear icon in sidebar):
+Firebase is now configured and ready. The app already has the Firebase configuration built in, so you don't need to copy or paste any values.
 
-1. Scroll down to **"Your apps"**
-2. Find your web app
-3. Copy these values:
+**Next: Create your account in the CalorieTracker app**
 
-```javascript
-apiKey: "AIza..."
-authDomain: "your-project.firebaseapp.com"
-projectId: "your-project"
-storageBucket: "your-project.appspot.com"
-messagingSenderId: "123456789"
-appId: "1:123456789:web:abc123"
-```
+### Step 7: Create Your Account
 
-### Step 7: Configure CalorieTracker App
+1. **Open your CalorieTracker app** (on phone, laptop, tablet, etc.)
+2. A **sign-in modal** will automatically appear
+3. Click the **"Sign Up"** tab
+4. Enter your email and password (minimum 6 characters)
+5. Confirm your password
+6. Click **"Create Account"**
+7. You should see **"✓ Syncing (your@email.com)"** in Settings!
 
-1. **Open your CalorieTracker app** (on phone or computer)
-2. Go to **Settings** tab
-3. Scroll to **"Cloud Sync (Firebase)"** section
-4. Click **"Configure Firebase"**
-5. **Paste each value** from Step 6:
-   - API Key
-   - Auth Domain
-   - Project ID
-   - Storage Bucket
-   - Messaging Sender ID
-   - App ID
-6. Click **"Save & Enable Sync"**
+Your meals will now automatically sync across all devices!
 
-### Step 8: Create Your Account
+### Step 8: Sign In on Other Devices
 
-1. After saving Firebase config, a **sign-in modal** will appear
-2. Click the **"Sign Up"** tab
-3. Enter your email and password (minimum 6 characters)
-4. Confirm your password
-5. Click **"Create Account"**
-6. You should see **"✓ Syncing (your@email.com)"** in Settings!
+1. **Open the app** on another device
+2. When the sign-in modal appears, click **"Sign In"** tab
+3. Enter the **same email and password** from Step 7
+4. Your meals automatically appear! ✨
 
-### Step 9: Sign In on Other Devices
-
-1. **Open the app** on another device (laptop, tablet, etc.)
-2. Go to **Settings** → **Configure Firebase** (same 6 values)
-3. Click **"Save & Enable Sync"**
-4. In the sign-in modal, click **"Sign In"** tab
-5. Enter the **same email and password** from Step 8
-6. Your meals automatically appear! ✨
+That's it! No need to configure Firebase on each device - just sign in and you're synced.
 
 ---
 
@@ -230,46 +207,55 @@ console.log(JSON.stringify(meals, null, 2));
 
 ## 🐛 Troubleshooting
 
-### "Firebase not configured" message
+### Can't sign in or sign up
 
-- Check all 6 config values are entered correctly
-- Make sure there are no extra spaces
-- Try clicking "Save & Enable Sync" again
+- Make sure you completed Step 5 (Enable Email/Password Authentication in Firebase Console)
+- Check that you're using a valid email format
+- Password must be at least 6 characters
+- If you forgot your password, you'll need to reset it in Firebase Console
 
 ### Meals not syncing
 
+- Make sure you're signed in (check Settings → Cloud Sync status)
 - Check internet connection
 - Open browser console (F12) - look for errors
-- Verify Firestore rules are set correctly
-- Check Firebase Authentication is enabled
+- Verify Firestore rules are set correctly (Step 4)
+- Verify Email/Password auth is enabled in Firebase Console (Step 5)
 
 ### "Permission denied" errors
 
 - Check security rules match Step 4 exactly
-- Verify Anonymous auth is enabled
-- Try signing out and back in (clear browser data)
+- Make sure you're signed in with email/password
+- Try signing out and signing back in
 
 ### Different data on different devices
 
-- This can happen if devices were offline
-- Wait a few minutes - should sync automatically
+- Make sure you're signed in with the **same email** on both devices
+- If devices were offline, wait a few minutes for sync
 - Refresh the page on both devices
 
 ---
 
-## 🎯 Advanced: Multiple Accounts
+## 🎯 Multiple Users / Family Accounts
 
-Want separate tracking for different people?
+Want separate tracking for different people in your household?
 
-**Option 1: Different Browsers**
-- Chrome = Person A
-- Firefox = Person B
-- Each gets own anonymous ID
+**Option 1: Separate Email Accounts (Recommended)**
+- Person A creates account with their email
+- Person B creates account with their email
+- Each person signs in with their own credentials
+- Data stays completely separate
 
-**Option 2: Manual User Switching**
-- Clear browser data to "sign out"
-- Reopen app to get new anonymous ID
-- (Future: can add email/password auth for this)
+**Option 2: Shared Account**
+- Create one account and share the email/password
+- Everyone sees the same meals
+- Good for shared meal planning
+
+**Option 3: Different Browsers**
+- Chrome = Person A's account
+- Firefox = Person B's account
+- Safari = Person C's account
+- Each browser stays signed into a different account
 
 ---
 
@@ -288,21 +274,29 @@ A: Advanced users can set up their own backend, but Firebase is easiest.
 A: Yes - Firestore security rules ensure only you can access your data.
 
 **Q: Can I share my data with family?**
-A: Not currently, but this could be added with custom sharing rules.
+A: Each person should create their own account with their own email. See "Multiple Users / Family Accounts" section above.
+
+**Q: Is my Firebase API key exposed in the app code?**
+A: Yes, and that's normal! Firebase web apps typically have the config visible in the code. Security is enforced by Firestore rules, not by hiding the config.
 
 ---
 
 ## ✅ Setup Checklist
 
+### Firebase Console Setup:
 - [ ] Created Firebase project
 - [ ] Registered web app
-- [ ] Enabled Firestore
-- [ ] Set security rules
-- [ ] Enabled Anonymous auth
-- [ ] Copied configuration values
-- [ ] Entered config in CalorieTracker Settings
-- [ ] Tested by adding a meal
-- [ ] Verified sync across devices
+- [ ] Enabled Firestore database
+- [ ] Set security rules (email/password auth required)
+- [ ] Enabled Email/Password authentication
+
+### App Setup:
+- [ ] Opened CalorieTracker app
+- [ ] Created account with email/password
+- [ ] Verified sync status shows "✓ Syncing (your@email.com)"
+- [ ] Added a test meal
+- [ ] Signed in on another device with same credentials
+- [ ] Verified meals sync across devices
 
 ---
 
