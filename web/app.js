@@ -203,7 +203,7 @@ class CalorieTrackerApp {
                 const calorieRange = meal.caloriesMin === meal.caloriesMax
                     ? `${meal.caloriesMin} cal`
                     : `${meal.caloriesMin}-${meal.caloriesMax} cal`;
-                history += `  - ${meal.description} (${calorieRange})\n`;
+                history += `  - ${meal.foodDescription} (${calorieRange})\n`;
             });
             history += '\n';
         });
@@ -373,7 +373,16 @@ class CalorieTrackerApp {
 
     async loadHistory() {
         try {
-            const meals = await db.getMealsByDate(this.selectedDate);
+            let meals = [];
+
+            // Load from Firestore if signed in, otherwise use local IndexedDB
+            if (firebaseService.isSignedIn()) {
+                meals = await firebaseService.getMealsByDate(this.selectedDate);
+                console.log('Loaded meals from Firestore:', meals.length);
+            } else {
+                meals = await db.getMealsByDate(this.selectedDate);
+                console.log('Loaded meals from IndexedDB:', meals.length);
+            }
 
             // Update date display
             const dateDisplay = document.getElementById('selected-date');
@@ -457,7 +466,14 @@ class CalorieTrackerApp {
             const deleteBtn = card.querySelector('.delete-button');
             deleteBtn.addEventListener('click', async () => {
                 if (confirm('Delete this meal?')) {
-                    await db.deleteMeal(meal.id);
+                    // Delete from Firestore if signed in, otherwise delete from IndexedDB
+                    if (firebaseService.isSignedIn()) {
+                        await firebaseService.deleteMeal(meal.id);
+                        console.log('Deleted meal from Firestore');
+                    } else {
+                        await db.deleteMeal(meal.id);
+                        console.log('Deleted meal from IndexedDB');
+                    }
                     this.loadHistory();
                 }
             });
@@ -602,6 +618,10 @@ class CalorieTrackerApp {
                 authModal.classList.remove('active');
                 this.showTemporaryMessage('Signed in successfully!');
 
+                // Sync any local meals to Firestore, then reload history
+                await this.syncLocalMealsToFirestore();
+                this.loadHistory();
+
                 // Clear form
                 document.getElementById('signin-email').value = '';
                 document.getElementById('signin-password').value = '';
@@ -653,6 +673,10 @@ class CalorieTrackerApp {
                 authModal.classList.remove('active');
                 this.showTemporaryMessage('Account created successfully!');
 
+                // Sync any local meals to Firestore, then reload history
+                await this.syncLocalMealsToFirestore();
+                this.loadHistory();
+
                 // Clear form
                 document.getElementById('signup-email').value = '';
                 document.getElementById('signup-password').value = '';
@@ -672,6 +696,35 @@ class CalorieTrackerApp {
                 authModal.classList.remove('active');
             }
         });
+    }
+
+    async syncLocalMealsToFirestore() {
+        if (!firebaseService.isSignedIn()) {
+            return;
+        }
+
+        try {
+            // Get all local meals from IndexedDB
+            const localMeals = await db.getAllMeals();
+
+            if (localMeals.length === 0) {
+                console.log('No local meals to sync');
+                return;
+            }
+
+            console.log(`Syncing ${localMeals.length} local meals to Firestore...`);
+
+            // Upload each meal to Firestore
+            for (const meal of localMeals) {
+                // Remove the IndexedDB id before syncing
+                const { id, ...mealData } = meal;
+                await firebaseService.addMeal(mealData);
+            }
+
+            console.log('Local meals synced to Firestore successfully');
+        } catch (error) {
+            console.error('Error syncing local meals:', error);
+        }
     }
 
     updateAuthUI() {

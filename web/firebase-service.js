@@ -190,6 +190,7 @@ class FirebaseService {
             const mealsRef = collection(this.db, 'users', this.user.uid, 'meals');
             const docRef = await addDoc(mealsRef, {
                 ...meal,
+                date: meal.date || this.getDateString(meal.timestamp), // Add date field for querying
                 userId: this.user.uid,
                 syncedAt: new Date()
             });
