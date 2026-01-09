@@ -252,6 +252,36 @@ class FirebaseService {
         }
     }
 
+    // Get recent meals (last N days)
+    async getRecentMeals(days = 14) {
+        if (!this.initialized || !this.user) return [];
+
+        try {
+            const cutoffDate = new Date();
+            cutoffDate.setDate(cutoffDate.getDate() - days);
+            const cutoffTimestamp = cutoffDate.getTime();
+
+            const mealsRef = collection(this.db, 'users', this.user.uid, 'meals');
+            const q = query(mealsRef, orderBy('timestamp', 'desc'));
+
+            const querySnapshot = await getDocs(q);
+            const meals = [];
+            querySnapshot.forEach((doc) => {
+                const mealData = doc.data();
+                if (mealData.timestamp >= cutoffTimestamp) {
+                    meals.push({
+                        id: doc.id,
+                        ...mealData
+                    });
+                }
+            });
+            return meals;
+        } catch (error) {
+            console.error('Error getting recent meals:', error);
+            return [];
+        }
+    }
+
     // Delete a meal
     async deleteMeal(mealId) {
         if (!this.initialized || !this.user) return false;

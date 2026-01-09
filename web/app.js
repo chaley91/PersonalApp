@@ -138,7 +138,14 @@ class CalorieTrackerApp {
 
         try {
             // Get recent meal history for context
-            const recentMeals = await db.getRecentMeals(14); // Last 14 days
+            let recentMeals = [];
+            if (firebaseService.isSignedIn()) {
+                recentMeals = await firebaseService.getRecentMeals(14);
+                console.log('Loaded recent meals from Firestore for context:', recentMeals.length);
+            } else {
+                recentMeals = await db.getRecentMeals(14);
+                console.log('Loaded recent meals from IndexedDB for context:', recentMeals.length);
+            }
             const mealHistoryContext = this.formatMealHistory(recentMeals);
 
             // Combine conversation context with meal history
