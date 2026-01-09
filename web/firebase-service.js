@@ -49,16 +49,25 @@ class FirebaseService {
             this.auth = getAuth(this.app);
             this.db = getFirestore(this.app);
 
-            // Listen for auth state changes
-            onAuthStateChanged(this.auth, (user) => {
-                this.user = user;
-                if (user) {
-                    console.log('User signed in:', user.email || user.uid);
-                    this.initialized = true;
-                } else {
-                    console.log('User signed out');
-                    this.initialized = false;
-                }
+            // Wait for initial auth state to be restored from localStorage
+            await new Promise((resolve) => {
+                let isFirstCall = true;
+                onAuthStateChanged(this.auth, (user) => {
+                    this.user = user;
+                    if (user) {
+                        console.log('User signed in:', user.email || user.uid);
+                        this.initialized = true;
+                    } else {
+                        console.log('User signed out');
+                        this.initialized = false;
+                    }
+
+                    // Resolve on first call (initial auth state determined)
+                    if (isFirstCall) {
+                        isFirstCall = false;
+                        resolve();
+                    }
+                });
             });
 
             return true;

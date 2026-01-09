@@ -29,10 +29,8 @@ class CalorieTrackerApp {
                 this.updateAuthUI();
             } else {
                 this.updateFirebaseStatus('Not signed in');
-                // Show auth modal after a brief delay
-                setTimeout(() => {
-                    document.getElementById('auth-modal').classList.add('active');
-                }, 500);
+                // Show auth modal immediately (auth state already determined)
+                document.getElementById('auth-modal').classList.add('active');
             }
         } else {
             this.updateFirebaseStatus('Not configured');
