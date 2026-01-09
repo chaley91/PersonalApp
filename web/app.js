@@ -27,6 +27,11 @@ class CalorieTrackerApp {
             if (firebaseService.isSignedIn()) {
                 this.updateFirebaseStatus('✓ Syncing');
                 this.updateAuthUI();
+
+                // Sync local meals to Firestore in the background
+                this.syncLocalMealsToFirestore().catch(err => {
+                    console.error('Background sync failed:', err);
+                });
             } else {
                 this.updateFirebaseStatus('Not signed in');
                 // Show auth modal immediately (auth state already determined)
@@ -137,15 +142,26 @@ class CalorieTrackerApp {
         document.getElementById('send-btn').disabled = true;
 
         try {
-            // Get recent meal history for context
-            let recentMeals = [];
+            // Get recent meal history for context - load from both sources and merge
+            let recentMeals = await db.getRecentMeals(14);
+            console.log('Loaded recent meals from IndexedDB for context:', recentMeals.length);
+
             if (firebaseService.isSignedIn()) {
-                recentMeals = await firebaseService.getRecentMeals(14);
-                console.log('Loaded recent meals from Firestore for context:', recentMeals.length);
-            } else {
-                recentMeals = await db.getRecentMeals(14);
-                console.log('Loaded recent meals from IndexedDB for context:', recentMeals.length);
+                const firestoreMeals = await firebaseService.getRecentMeals(14);
+                console.log('Loaded recent meals from Firestore for context:', firestoreMeals.length);
+
+                // Merge meals (avoid duplicates)
+                const mealMap = new Map();
+                recentMeals.forEach(meal => {
+                    mealMap.set(meal.timestamp + meal.foodDescription, meal);
+                });
+                firestoreMeals.forEach(meal => {
+                    mealMap.set(meal.timestamp + meal.foodDescription, meal);
+                });
+                recentMeals = Array.from(mealMap.values());
+                console.log('Merged recent meals total:', recentMeals.length);
             }
+
             const mealHistoryContext = this.formatMealHistory(recentMeals);
 
             // Combine conversation context with meal history
@@ -384,15 +400,30 @@ class CalorieTrackerApp {
 
     async loadHistory() {
         try {
-            let meals = [];
+            // Always load from IndexedDB first (it's fast and local)
+            let meals = await db.getMealsByDate(this.selectedDate);
+            console.log('Loaded meals from IndexedDB:', meals.length);
 
-            // Load from Firestore if signed in, otherwise use local IndexedDB
+            // If signed in, also try to load from Firestore and merge
             if (firebaseService.isSignedIn()) {
-                meals = await firebaseService.getMealsByDate(this.selectedDate);
-                console.log('Loaded meals from Firestore:', meals.length);
-            } else {
-                meals = await db.getMealsByDate(this.selectedDate);
-                console.log('Loaded meals from IndexedDB:', meals.length);
+                const firestoreMeals = await firebaseService.getMealsByDate(this.selectedDate);
+                console.log('Loaded meals from Firestore:', firestoreMeals.length);
+
+                // Merge Firestore meals with IndexedDB meals (avoid duplicates)
+                const mealMap = new Map();
+
+                // Add IndexedDB meals first
+                meals.forEach(meal => {
+                    mealMap.set(meal.timestamp + meal.foodDescription, meal);
+                });
+
+                // Add/override with Firestore meals
+                firestoreMeals.forEach(meal => {
+                    mealMap.set(meal.timestamp + meal.foodDescription, meal);
+                });
+
+                meals = Array.from(mealMap.values());
+                console.log('Merged meals total:', meals.length);
             }
 
             // Update date display
