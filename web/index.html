@@ -8,12 +8,13 @@
     <meta name="apple-mobile-web-app-title" content="CalorieTracker">
     <meta name="theme-color" content="#007AFF">
 
-    <title>CalorieTracker - AI Calorie Tracking</title>
+    <title>HealthTracker - AI Health Tracking</title>
 
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
     <link rel="icon" type="image/png" href="icons/icon-192.png">
-    <link rel="stylesheet" href="styles.css?v=3">
+    <link rel="stylesheet" href="styles.css?v=4">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 </head>
 <body>
     <div id="app">
@@ -27,13 +28,29 @@
                 </svg>
                 <span>Add Meal</span>
             </button>
-            <button class="tab-button" data-tab="history">
+            <button class="tab-button" data-tab="weight">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M6 18L6 6"/>
+                    <path d="M18 18L18 6"/>
+                    <rect x="3" y="8" width="18" height="8" rx="1"/>
+                </svg>
+                <span>Weight</span>
+            </button>
+            <button class="tab-button" data-tab="workouts">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 8h1a4 4 0 010 8h-1"/>
+                    <path d="M6 8H5a4 4 0 000 8h1"/>
+                    <line x1="6" y1="12" x2="18" y2="12"/>
+                </svg>
+                <span>Workouts</span>
+            </button>
+            <button class="tab-button" data-tab="insights">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="18" y1="20" x2="18" y2="10"/>
                     <line x1="12" y1="20" x2="12" y2="4"/>
                     <line x1="6" y1="20" x2="6" y2="14"/>
                 </svg>
-                <span>History</span>
+                <span>Insights</span>
             </button>
             <button class="tab-button" data-tab="settings">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -62,6 +79,15 @@
                 <div class="conversation-messages" id="conversation-messages"></div>
             </div>
 
+            <!-- Today's Meals Summary -->
+            <div id="today-meals-section" class="today-meals-section">
+                <div class="today-meals-header">
+                    <h3>Today's Meals</h3>
+                    <span id="today-total-calories" class="today-total">0 cal</span>
+                </div>
+                <div id="today-meals-list" class="today-meals-list"></div>
+            </div>
+
             <div class="input-container">
                 <div id="error-message" class="error-message" style="display: none;"></div>
                 <div class="input-row">
@@ -81,36 +107,117 @@
             </div>
         </div>
 
-        <!-- History Tab -->
-        <div id="history-tab" class="tab-content">
+        <!-- Weight Tab -->
+        <div id="weight-tab" class="tab-content">
             <header class="app-header">
-                <button id="date-picker-btn" class="date-button">
-                    <span id="selected-date">Today</span>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                        <line x1="16" y1="2" x2="16" y2="6"/>
-                        <line x1="8" y1="2" x2="8" y2="6"/>
-                        <line x1="3" y1="10" x2="21" y2="10"/>
-                    </svg>
-                </button>
-                <div class="date-nav">
-                    <button id="prev-day-btn" class="nav-button">‹</button>
-                    <button id="next-day-btn" class="nav-button">›</button>
-                </div>
+                <h1>Weight</h1>
             </header>
 
-            <div class="history-container">
-                <div class="daily-summary" id="daily-summary">
-                    <div class="summary-item">
-                        <div class="summary-label">Total Calories</div>
-                        <div class="summary-value" id="total-calories">0</div>
+            <div class="weight-container">
+                <div class="weight-input-section">
+                    <div class="weight-input-row">
+                        <div class="weight-field">
+                            <label for="weight-value">Weight</label>
+                            <input type="number" id="weight-value" placeholder="0.0" step="0.1" min="0">
+                        </div>
+                        <div class="weight-field weight-unit-field">
+                            <label for="weight-unit">Unit</label>
+                            <select id="weight-unit">
+                                <option value="lbs">lbs</option>
+                                <option value="kg">kg</option>
+                            </select>
+                        </div>
+                        <div class="weight-field">
+                            <label for="weight-date">Date</label>
+                            <input type="date" id="weight-date">
+                        </div>
                     </div>
-                    <div class="summary-item">
-                        <div class="summary-label">Meals</div>
-                        <div class="summary-value" id="meal-count">0</div>
+                    <button id="log-weight-btn" class="primary-button">Log Weight</button>
+                </div>
+
+                <div class="weight-history-section">
+                    <h3>Recent Entries</h3>
+                    <div id="weight-history-list" class="weight-history-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Workouts Tab -->
+        <div id="workouts-tab" class="tab-content">
+            <header class="app-header">
+                <h1>Workouts</h1>
+            </header>
+
+            <div class="workouts-container">
+                <div class="workout-input-section">
+                    <textarea
+                        id="workout-input"
+                        class="workout-textarea"
+                        placeholder="Describe your workout... e.g., 'Bench press 3x10 at 135lbs, 20 min treadmill run, 3x12 bicep curls with 30lb dumbbells'"
+                        rows="3"
+                    ></textarea>
+                    <button id="analyze-workout-btn" class="primary-button">Analyze Workout</button>
+                </div>
+
+                <!-- Workout Preview (shown after Claude parses) -->
+                <div id="workout-preview" class="workout-preview" style="display: none;">
+                    <h3>Parsed Workout</h3>
+                    <div id="workout-exercises" class="workout-exercises"></div>
+                    <div class="workout-preview-summary">
+                        <span id="workout-total-cal">0 cal burned</span>
+                        <span id="workout-total-dur">0 min</span>
+                    </div>
+                    <div id="workout-notes" class="workout-notes"></div>
+                    <div class="workout-preview-actions">
+                        <button id="save-workout-btn" class="primary-button">Save Workout</button>
+                        <button id="cancel-workout-btn" class="secondary-button">Cancel</button>
                     </div>
                 </div>
-                <div id="meals-list" class="meals-list"></div>
+
+                <div class="workout-history-section">
+                    <h3>Recent Workouts</h3>
+                    <div id="workout-history-list" class="workout-history-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Insights Tab -->
+        <div id="insights-tab" class="tab-content">
+            <header class="app-header">
+                <h1>Insights</h1>
+            </header>
+
+            <div class="insights-container">
+                <div class="chart-section">
+                    <h3>Weight Trend (30 days)</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="weight-chart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-section">
+                    <h3>Calorie Trends</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="calorie-chart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-section">
+                    <h3>Workout Frequency</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="workout-chart"></canvas>
+                    </div>
+                </div>
+
+                <button id="analyze-health-btn" class="primary-button analyze-btn">Analyze My Health</button>
+
+                <div id="analysis-results" class="analysis-results" style="display: none;">
+                    <div id="analysis-summary" class="analysis-card"></div>
+                    <div id="analysis-highlights" class="analysis-highlights"></div>
+                    <div id="analysis-observations" class="analysis-section"></div>
+                    <div id="analysis-diet" class="analysis-section"></div>
+                    <div id="analysis-exercise" class="analysis-section"></div>
+                </div>
             </div>
         </div>
 
@@ -156,7 +263,7 @@
                         Status: <span id="firebase-status">Not signed in</span>
                     </p>
                     <p class="input-help" style="margin-bottom: 16px;">
-                        Your meals and API key automatically sync across all devices when signed in.
+                        Your data automatically syncs across all devices when signed in.
                         <a href="FIREBASE_SETUP.md" target="_blank" style="color: var(--primary-color);">Setup Guide</a>
                     </p>
                     <button id="sign-out-btn" class="danger-button" style="display: none;">
@@ -168,7 +275,7 @@
                     <h2>About</h2>
                     <div class="info-row">
                         <span>App Version</span>
-                        <span class="info-value">1.0.0</span>
+                        <span class="info-value">2.0.0</span>
                     </div>
                     <a href="https://www.anthropic.com/privacy" target="_blank" class="info-row link-row">
                         <span>Privacy Policy</span>
@@ -220,7 +327,7 @@
                         <div class="step-number">3</div>
                         <div class="step-content">
                             <h3>Create New Key</h3>
-                            <p>Click 'Create Key' and give it a name like 'CalorieTracker'</p>
+                            <p>Click 'Create Key' and give it a name like 'HealthTracker'</p>
                         </div>
                     </div>
                     <div class="step">
@@ -252,7 +359,7 @@
                 </div>
                 <div class="modal-body">
                     <p style="margin-bottom: 20px; color: var(--text-secondary);">
-                        Sign in to sync your meals and API key across all your devices.
+                        Sign in to sync your data across all your devices.
                     </p>
 
                     <!-- Tab Switcher -->
@@ -294,7 +401,7 @@
                     </div>
 
                     <div class="auth-note">
-                        <p><strong>Privacy:</strong> Your email is only used for authentication. Your meal data and API key are stored in your private Firestore database.</p>
+                        <p><strong>Privacy:</strong> Your email is only used for authentication. Your data is stored in your private Firestore database.</p>
                     </div>
                 </div>
             </div>

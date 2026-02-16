@@ -12,6 +12,8 @@ class CalorieTrackerApp {
         this.conversationContext = '';
         this.currentEstimate = null;
         this.isProcessing = false;
+        this.currentParsedWorkout = null;
+        this.charts = {};
 
         this.init();
     }
@@ -25,19 +27,18 @@ class CalorieTrackerApp {
         if (firebaseInitialized) {
             console.log('Firebase initialized');
             if (firebaseService.isSignedIn()) {
-                this.updateFirebaseStatus('✓ Syncing');
+                this.updateFirebaseStatus('Syncing');
                 this.updateAuthUI();
 
-                // Sync local meals to Firestore, then reload history
+                // Sync local data to Firestore
                 this.syncLocalMealsToFirestore().then(() => {
-                    console.log('Background sync completed, reloading history...');
-                    this.loadHistory();
+                    console.log('Background sync completed');
+                    this.loadTodayMeals();
                 }).catch(err => {
                     console.error('Background sync failed:', err);
                 });
             } else {
                 this.updateFirebaseStatus('Not signed in');
-                // Show auth modal immediately (auth state already determined)
                 document.getElementById('auth-modal').classList.add('active');
             }
         } else {
@@ -54,16 +55,31 @@ class CalorieTrackerApp {
         // Setup event listeners
         this.setupTabNavigation();
         this.setupMealEntry();
-        this.setupHistory();
         this.setupSettings();
         this.setupModals();
         this.setupAuth();
+        this.setupWeightTab();
+        this.setupWorkoutsTab();
+        this.setupInsightsTab();
 
         // Load initial data
-        this.loadHistory();
+        this.loadTodayMeals();
+
+        // Default weight date to today
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('weight-date').value = today;
+
+        // Load saved unit preference
+        const savedUnit = localStorage.getItem('weightUnit');
+        if (savedUnit) {
+            document.getElementById('weight-unit').value = savedUnit;
+        }
     }
 
+    // ========================
     // Tab Navigation
+    // ========================
+
     setupTabNavigation() {
         const tabButtons = document.querySelectorAll('.tab-button');
         const tabContents = document.querySelectorAll('.tab-content');
@@ -81,35 +97,39 @@ class CalorieTrackerApp {
 
                 this.currentTab = tabName;
 
-                // Refresh data when switching to history
-                if (tabName === 'history') {
-                    this.loadHistory();
+                // Load data when switching tabs
+                if (tabName === 'add-meal') {
+                    this.loadTodayMeals();
+                } else if (tabName === 'weight') {
+                    this.loadWeightHistory();
+                } else if (tabName === 'workouts') {
+                    this.loadWorkoutHistory();
+                } else if (tabName === 'insights') {
+                    this.loadInsights();
                 }
             });
         });
     }
 
+    // ========================
     // Meal Entry
+    // ========================
+
     setupMealEntry() {
         const foodInput = document.getElementById('food-input');
         const sendBtn = document.getElementById('send-btn');
         const clearBtn = document.getElementById('clear-conversation-btn');
         const saveBtn = document.getElementById('save-entry-btn');
 
-        // Auto-resize textarea
         foodInput.addEventListener('input', () => {
             foodInput.style.height = 'auto';
             foodInput.style.height = foodInput.scrollHeight + 'px';
-
-            // Enable/disable send button
             const hasText = foodInput.value.trim().length > 0;
             sendBtn.disabled = !hasText || this.isProcessing;
         });
 
-        // Send message
         sendBtn.addEventListener('click', () => this.submitFood());
 
-        // Enter to send (shift+enter for new line)
         foodInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -119,10 +139,7 @@ class CalorieTrackerApp {
             }
         });
 
-        // Clear conversation
         clearBtn.addEventListener('click', () => this.resetConversation());
-
-        // Save entry
         saveBtn.addEventListener('click', () => this.saveEntry());
     }
 
@@ -135,25 +152,18 @@ class CalorieTrackerApp {
         this.isProcessing = true;
         this.showError(null);
 
-        // Add user message
         this.addMessage(input, true);
         this.conversationContext += `User: ${input}\n`;
 
-        // Clear input
         foodInput.value = '';
         foodInput.style.height = 'auto';
         document.getElementById('send-btn').disabled = true;
 
         try {
-            // Get recent meal history for context - load from both sources and merge
             let recentMeals = await db.getRecentMeals(14);
-            console.log('Loaded recent meals from IndexedDB for context:', recentMeals.length);
 
             if (firebaseService.isSignedIn()) {
                 const firestoreMeals = await firebaseService.getRecentMeals(14);
-                console.log('Loaded recent meals from Firestore for context:', firestoreMeals.length);
-
-                // Merge meals (avoid duplicates)
                 const mealMap = new Map();
                 recentMeals.forEach(meal => {
                     mealMap.set(meal.timestamp + meal.foodDescription, meal);
@@ -162,33 +172,23 @@ class CalorieTrackerApp {
                     mealMap.set(meal.timestamp + meal.foodDescription, meal);
                 });
                 recentMeals = Array.from(mealMap.values());
-                console.log('Merged recent meals total:', recentMeals.length);
             }
 
             const mealHistoryContext = this.formatMealHistory(recentMeals);
-
-            // Combine conversation context with meal history
             const fullContext = mealHistoryContext + (this.conversationContext || '');
 
-            // Get calorie estimate
-            const estimate = await this.claudeService.estimateCalories(
-                input,
-                fullContext
-            );
+            const estimate = await this.claudeService.estimateCalories(input, fullContext);
 
             this.currentEstimate = estimate;
 
-            // Add assistant response
             this.addMessage(estimate.analysis, false);
             this.conversationContext += `Assistant: ${estimate.analysis}\n`;
 
-            // Handle clarification
             if (estimate.needsClarification && estimate.clarificationQuestion) {
                 this.addMessage(estimate.clarificationQuestion, false);
                 this.conversationContext += `Question: ${estimate.clarificationQuestion}\n`;
                 this.showSaveButton(true);
             } else {
-                // Auto-save if no clarification needed
                 await this.saveEntry();
             }
         } catch (error) {
@@ -200,28 +200,22 @@ class CalorieTrackerApp {
     }
 
     formatMealHistory(meals) {
-        if (!meals || meals.length === 0) {
-            return '';
-        }
+        if (!meals || meals.length === 0) return '';
 
-        // Group meals by date
         const mealsByDate = {};
         meals.forEach(meal => {
-            if (!mealsByDate[meal.date]) {
-                mealsByDate[meal.date] = [];
-            }
+            if (!mealsByDate[meal.date]) mealsByDate[meal.date] = [];
             mealsByDate[meal.date].push(meal);
         });
 
-        // Format as readable history
         let history = '=== RECENT MEAL HISTORY ===\n';
         history += 'The user has logged these meals recently. Reference them when the user mentions "yesterday", "the same as", "similar to what I had", etc.\n\n';
 
-        const dates = Object.keys(mealsByDate).sort().reverse(); // Most recent first
+        const dates = Object.keys(mealsByDate).sort().reverse();
         const today = new Date().toISOString().split('T')[0];
         const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
 
-        dates.slice(0, 10).forEach(date => { // Limit to last 10 days
+        dates.slice(0, 10).forEach(date => {
             const dayLabel = date === today ? 'Today' : date === yesterday ? 'Yesterday' : date;
             history += `${dayLabel}:\n`;
 
@@ -242,10 +236,8 @@ class CalorieTrackerApp {
         const messagesContainer = document.getElementById('conversation-messages');
         const emptyState = document.getElementById('conversation-empty');
 
-        // Hide empty state
         emptyState.style.display = 'none';
 
-        // Create message element
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${isUser ? 'user' : 'assistant'}`;
 
@@ -261,13 +253,10 @@ class CalorieTrackerApp {
         messageDiv.appendChild(time);
         messagesContainer.appendChild(messageDiv);
 
-        // Scroll to bottom
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
 
-        // Update conversation history
         this.conversationHistory.push({ text, isUser, timestamp: new Date() });
 
-        // Show clear button
         document.getElementById('clear-conversation-btn').style.display = 'block';
     }
 
@@ -284,16 +273,13 @@ class CalorieTrackerApp {
     showSaveButton(show) {
         const saveBtn = document.getElementById('save-entry-btn');
         saveBtn.style.display = show ? 'block' : 'none';
-        if (show) {
-            saveBtn.textContent = 'Skip & Save Entry';
-        }
+        if (show) saveBtn.textContent = 'Skip & Save Entry';
     }
 
     async saveEntry() {
         if (!this.currentEstimate) return;
 
         try {
-            // Create meal entry
             const meal = {
                 timestamp: Date.now(),
                 foodDescription: this.conversationHistory
@@ -309,27 +295,18 @@ class CalorieTrackerApp {
                 notes: this.currentEstimate.analysis
             };
 
-            // Save to local database
             await db.addMeal(meal);
-            console.log('Meal saved to IndexedDB');
 
-            // Also save to Firebase (if configured)
             if (firebaseService.initialized) {
                 await firebaseService.addMeal(meal);
-                console.log('Meal synced to Firestore');
             }
 
-            // Reset conversation
             this.resetConversation();
+            await this.loadTodayMeals();
 
-            // Reload history to show the new meal
-            await this.loadHistory();
-
-            // Show success feedback
             this.showTemporaryMessage('Meal saved successfully!');
         } catch (error) {
             this.showError('Failed to save meal: ' + error.message);
-            console.error('Error saving meal:', error);
         }
     }
 
@@ -338,7 +315,6 @@ class CalorieTrackerApp {
         this.conversationContext = '';
         this.currentEstimate = null;
 
-        // Clear UI
         const messagesContainer = document.getElementById('conversation-messages');
         messagesContainer.innerHTML = '';
 
@@ -351,7 +327,6 @@ class CalorieTrackerApp {
     }
 
     showTemporaryMessage(message) {
-        // Create temporary toast message
         const toast = document.createElement('div');
         toast.className = 'toast';
         toast.textContent = message;
@@ -376,183 +351,696 @@ class CalorieTrackerApp {
         }, 2000);
     }
 
-    // History
-    setupHistory() {
-        const prevBtn = document.getElementById('prev-day-btn');
-        const nextBtn = document.getElementById('next-day-btn');
-        const datePickerBtn = document.getElementById('date-picker-btn');
+    // ========================
+    // Today's Meals (embedded in Add Meal tab)
+    // ========================
 
-        prevBtn.addEventListener('click', () => {
-            this.selectedDate.setDate(this.selectedDate.getDate() - 1);
-            this.loadHistory();
-        });
-
-        nextBtn.addEventListener('click', () => {
-            const today = new Date();
-            if (this.selectedDate < today) {
-                this.selectedDate.setDate(this.selectedDate.getDate() + 1);
-                this.loadHistory();
-            }
-        });
-
-        datePickerBtn.addEventListener('click', () => {
-            document.getElementById('date-picker-modal').classList.add('active');
-            document.getElementById('date-input').valueAsDate = this.selectedDate;
-        });
-    }
-
-    async loadHistory() {
+    async loadTodayMeals() {
         try {
-            // Always load from IndexedDB first (it's fast and local)
-            let meals = await db.getMealsByDate(this.selectedDate);
-            console.log('Loaded meals from IndexedDB:', meals.length);
+            let meals = await db.getMealsByDate(new Date());
 
-            // If signed in, also try to load from Firestore and merge
             if (firebaseService.isSignedIn()) {
-                const firestoreMeals = await firebaseService.getMealsByDate(this.selectedDate);
-                console.log('Loaded meals from Firestore:', firestoreMeals.length);
-
-                // Merge Firestore meals with IndexedDB meals (avoid duplicates)
+                const firestoreMeals = await firebaseService.getMealsByDate(new Date());
                 const mealMap = new Map();
-
-                // Add IndexedDB meals first
-                meals.forEach(meal => {
-                    mealMap.set(meal.timestamp + meal.foodDescription, meal);
-                });
-
-                // Add/override with Firestore meals
-                firestoreMeals.forEach(meal => {
-                    mealMap.set(meal.timestamp + meal.foodDescription, meal);
-                });
-
+                meals.forEach(m => mealMap.set(m.timestamp + m.foodDescription, m));
+                firestoreMeals.forEach(m => mealMap.set(m.timestamp + m.foodDescription, m));
                 meals = Array.from(mealMap.values());
-                console.log('Merged meals total:', meals.length);
             }
 
-            // Update date display
-            const dateDisplay = document.getElementById('selected-date');
-            const today = new Date();
-            const isToday = this.selectedDate.toDateString() === today.toDateString();
+            meals.sort((a, b) => b.timestamp - a.timestamp);
 
-            if (isToday) {
-                dateDisplay.textContent = 'Today';
-            } else {
-                dateDisplay.textContent = this.selectedDate.toLocaleDateString([], {
-                    month: 'short',
-                    day: 'numeric'
-                });
+            const listEl = document.getElementById('today-meals-list');
+            const totalEl = document.getElementById('today-total-calories');
+
+            if (meals.length === 0) {
+                listEl.innerHTML = '<div class="today-meals-empty">No meals logged today</div>';
+                totalEl.textContent = '0 cal';
+                return;
             }
 
-            // Enable/disable next button
-            document.getElementById('next-day-btn').disabled = isToday;
+            const totalMin = meals.reduce((sum, m) => sum + m.caloriesMin, 0);
+            const totalMax = meals.reduce((sum, m) => sum + m.caloriesMax, 0);
+            totalEl.textContent = totalMin === totalMax ? `${totalMin} cal` : `${totalMin}-${totalMax} cal`;
 
-            // Calculate totals
-            const totalMin = meals.reduce((sum, meal) => sum + meal.caloriesMin, 0);
-            const totalMax = meals.reduce((sum, meal) => sum + meal.caloriesMax, 0);
+            listEl.innerHTML = '';
+            meals.forEach(meal => {
+                const cal = meal.caloriesMin === meal.caloriesMax
+                    ? `${meal.caloriesMin} cal`
+                    : `${meal.caloriesMin}-${meal.caloriesMax} cal`;
 
-            // Update summary
-            const caloriesDisplay = totalMin === totalMax
-                ? totalMin.toString()
-                : `${totalMin}-${totalMax}`;
-
-            document.getElementById('total-calories').textContent = caloriesDisplay;
-            document.getElementById('meal-count').textContent = meals.length;
-
-            // Render meals list
-            this.renderMealsList(meals);
+                const item = document.createElement('div');
+                item.className = 'today-meal-item';
+                item.innerHTML = `
+                    <span class="meal-name">${this.escapeHtml(meal.foodDescription)}</span>
+                    <span class="meal-cal">${cal}</span>
+                `;
+                listEl.appendChild(item);
+            });
         } catch (error) {
-            console.error('Error loading history:', error);
+            console.error('Error loading today meals:', error);
         }
     }
 
-    renderMealsList(meals) {
-        const listContainer = document.getElementById('meals-list');
-        listContainer.innerHTML = '';
+    // ========================
+    // Weight Tab
+    // ========================
 
-        if (meals.length === 0) {
-            listContainer.innerHTML = `
-                <div class="meals-list-empty">
-                    <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <circle cx="12" cy="12" r="10"/>
-                        <line x1="12" y1="8" x2="12" y2="12"/>
-                        <line x1="12" y1="16" x2="12.01" y2="16"/>
-                    </svg>
-                    <p>No meals logged for this day</p>
-                </div>
-            `;
+    setupWeightTab() {
+        const logBtn = document.getElementById('log-weight-btn');
+        logBtn.addEventListener('click', () => this.logWeight());
+    }
+
+    async logWeight() {
+        const valueInput = document.getElementById('weight-value');
+        const unitSelect = document.getElementById('weight-unit');
+        const dateInput = document.getElementById('weight-date');
+
+        const weight = parseFloat(valueInput.value);
+        if (!weight || weight <= 0) {
+            this.showTemporaryMessage('Please enter a valid weight');
             return;
         }
 
-        // Sort by timestamp (most recent first)
-        meals.sort((a, b) => b.timestamp - a.timestamp);
+        const unit = unitSelect.value;
+        const dateStr = dateInput.value;
+        const timestamp = dateStr ? new Date(dateStr + 'T12:00:00').getTime() : Date.now();
 
-        meals.forEach(meal => {
+        // Save unit preference
+        localStorage.setItem('weightUnit', unit);
+
+        const entry = { timestamp, weight, unit };
+
+        try {
+            await db.addWeight(entry);
+
+            if (firebaseService.isSignedIn()) {
+                await firebaseService.addWeight(entry);
+            }
+
+            valueInput.value = '';
+            this.loadWeightHistory();
+            this.showTemporaryMessage('Weight logged!');
+        } catch (error) {
+            console.error('Error logging weight:', error);
+            this.showTemporaryMessage('Failed to log weight');
+        }
+    }
+
+    async loadWeightHistory() {
+        try {
+            let weights = await db.getRecentWeights(30);
+
+            if (firebaseService.isSignedIn()) {
+                const firestoreWeights = await firebaseService.getRecentWeights(30);
+                const weightMap = new Map();
+                weights.forEach(w => weightMap.set(w.timestamp + '' + w.weight, w));
+                firestoreWeights.forEach(w => weightMap.set(w.timestamp + '' + w.weight, w));
+                weights = Array.from(weightMap.values());
+            }
+
+            weights.sort((a, b) => b.timestamp - a.timestamp);
+
+            const listEl = document.getElementById('weight-history-list');
+
+            if (weights.length === 0) {
+                listEl.innerHTML = '<div class="weight-empty">No weight entries yet. Start tracking!</div>';
+                return;
+            }
+
+            listEl.innerHTML = '';
+            weights.forEach(entry => {
+                const card = document.createElement('div');
+                card.className = 'weight-entry-card';
+
+                const dateStr = new Date(entry.timestamp).toLocaleDateString([], {
+                    month: 'short', day: 'numeric', year: 'numeric'
+                });
+
+                card.innerHTML = `
+                    <div class="weight-entry-info">
+                        <div class="weight-entry-value">${entry.weight} ${entry.unit}</div>
+                        <div class="weight-entry-date">${dateStr}</div>
+                    </div>
+                    <button class="weight-entry-delete">Delete</button>
+                `;
+
+                card.querySelector('.weight-entry-delete').addEventListener('click', async () => {
+                    if (confirm('Delete this weight entry?')) {
+                        if (firebaseService.isSignedIn() && typeof entry.id === 'string') {
+                            await firebaseService.deleteWeight(entry.id);
+                        } else {
+                            await db.deleteWeight(entry.id);
+                        }
+                        this.loadWeightHistory();
+                    }
+                });
+
+                listEl.appendChild(card);
+            });
+        } catch (error) {
+            console.error('Error loading weight history:', error);
+        }
+    }
+
+    // ========================
+    // Workouts Tab
+    // ========================
+
+    setupWorkoutsTab() {
+        const analyzeBtn = document.getElementById('analyze-workout-btn');
+        const saveBtn = document.getElementById('save-workout-btn');
+        const cancelBtn = document.getElementById('cancel-workout-btn');
+
+        analyzeBtn.addEventListener('click', () => this.analyzeWorkout());
+        saveBtn.addEventListener('click', () => this.saveWorkout());
+        cancelBtn.addEventListener('click', () => this.cancelWorkoutPreview());
+    }
+
+    async analyzeWorkout() {
+        const input = document.getElementById('workout-input');
+        const description = input.value.trim();
+
+        if (!description) {
+            this.showTemporaryMessage('Please describe your workout');
+            return;
+        }
+
+        const analyzeBtn = document.getElementById('analyze-workout-btn');
+        analyzeBtn.disabled = true;
+        analyzeBtn.textContent = 'Analyzing...';
+
+        try {
+            const parsed = await this.claudeService.parseWorkout(description);
+            this.currentParsedWorkout = { ...parsed, rawDescription: description };
+            this.renderWorkoutPreview(parsed);
+        } catch (error) {
+            console.error('Error parsing workout:', error);
+            this.showTemporaryMessage('Failed to analyze workout: ' + error.message);
+        } finally {
+            analyzeBtn.disabled = false;
+            analyzeBtn.textContent = 'Analyze Workout';
+        }
+    }
+
+    renderWorkoutPreview(parsed) {
+        const preview = document.getElementById('workout-preview');
+        const exercisesEl = document.getElementById('workout-exercises');
+        const totalCalEl = document.getElementById('workout-total-cal');
+        const totalDurEl = document.getElementById('workout-total-dur');
+        const notesEl = document.getElementById('workout-notes');
+
+        exercisesEl.innerHTML = '';
+
+        (parsed.exercises || []).forEach((ex, i) => {
             const card = document.createElement('div');
-            card.className = 'meal-card';
+            card.className = 'exercise-card';
+            card.dataset.index = i;
 
-            const caloriesDisplay = meal.caloriesMin === meal.caloriesMax
-                ? `${meal.caloriesMin} cal`
-                : `${meal.caloriesMin}-${meal.caloriesMax} cal`;
+            const typeClass = (ex.type || 'other').toLowerCase();
+            const muscleHtml = (ex.muscleGroups || [])
+                .map(mg => `<span class="muscle-tag">${this.escapeHtml(mg)}</span>`)
+                .join('');
 
             card.innerHTML = `
-                <div class="meal-header">
-                    <div class="meal-description">${meal.foodDescription}</div>
-                    <div class="meal-calories">${caloriesDisplay}</div>
+                <div class="exercise-card-header">
+                    <input class="exercise-name-input" value="${this.escapeHtml(ex.name)}" data-field="name" data-index="${i}">
+                    <span class="exercise-type-badge ${typeClass}">${ex.type || 'other'}</span>
                 </div>
-                <div class="meal-time">${new Date(meal.timestamp).toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit'
-                })}</div>
-                ${meal.notes ? `<div class="meal-notes">${meal.notes}</div>` : ''}
-                <button class="delete-button" data-id="${meal.id}">Delete</button>
+                <div class="exercise-details">
+                    ${ex.duration != null ? `<div class="exercise-detail-field"><input type="number" value="${ex.duration}" data-field="duration" data-index="${i}"> min</div>` : ''}
+                    ${ex.sets != null ? `<div class="exercise-detail-field"><input type="number" value="${ex.sets}" data-field="sets" data-index="${i}"> sets</div>` : ''}
+                    ${ex.reps != null ? `<div class="exercise-detail-field"><input type="number" value="${ex.reps}" data-field="reps" data-index="${i}"> reps</div>` : ''}
+                    ${ex.weight != null ? `<div class="exercise-detail-field"><input type="number" value="${ex.weight}" data-field="weight" data-index="${i}"> lbs</div>` : ''}
+                </div>
+                <div class="exercise-muscle-groups">${muscleHtml}</div>
             `;
 
-            // Add delete handler
-            const deleteBtn = card.querySelector('.delete-button');
-            deleteBtn.addEventListener('click', async () => {
-                if (confirm('Delete this meal?')) {
-                    // Delete from Firestore if signed in, otherwise delete from IndexedDB
-                    if (firebaseService.isSignedIn()) {
-                        await firebaseService.deleteMeal(meal.id);
-                        console.log('Deleted meal from Firestore');
+            // Update parsed data on input change
+            card.querySelectorAll('input').forEach(inp => {
+                inp.addEventListener('change', () => {
+                    const idx = parseInt(inp.dataset.index);
+                    const field = inp.dataset.field;
+                    if (field === 'name') {
+                        this.currentParsedWorkout.exercises[idx].name = inp.value;
                     } else {
-                        await db.deleteMeal(meal.id);
-                        console.log('Deleted meal from IndexedDB');
+                        this.currentParsedWorkout.exercises[idx][field] = parseFloat(inp.value) || null;
                     }
-                    this.loadHistory();
-                }
+                });
             });
 
-            listContainer.appendChild(card);
+            exercisesEl.appendChild(card);
+        });
+
+        totalCalEl.textContent = `${parsed.totalCaloriesBurned || 0} cal burned`;
+        totalDurEl.textContent = `${parsed.totalDuration || 0} min`;
+        notesEl.textContent = parsed.notes || '';
+
+        preview.style.display = 'block';
+    }
+
+    cancelWorkoutPreview() {
+        document.getElementById('workout-preview').style.display = 'none';
+        this.currentParsedWorkout = null;
+    }
+
+    async saveWorkout() {
+        if (!this.currentParsedWorkout) return;
+
+        const workout = {
+            timestamp: Date.now(),
+            rawDescription: this.currentParsedWorkout.rawDescription,
+            exercises: this.currentParsedWorkout.exercises,
+            totalCaloriesBurned: this.currentParsedWorkout.totalCaloriesBurned,
+            totalDuration: this.currentParsedWorkout.totalDuration,
+            notes: this.currentParsedWorkout.notes
+        };
+
+        try {
+            await db.addWorkout(workout);
+
+            if (firebaseService.isSignedIn()) {
+                await firebaseService.addWorkout(workout);
+            }
+
+            document.getElementById('workout-input').value = '';
+            document.getElementById('workout-preview').style.display = 'none';
+            this.currentParsedWorkout = null;
+
+            this.loadWorkoutHistory();
+            this.showTemporaryMessage('Workout saved!');
+        } catch (error) {
+            console.error('Error saving workout:', error);
+            this.showTemporaryMessage('Failed to save workout');
+        }
+    }
+
+    async loadWorkoutHistory() {
+        try {
+            let workouts = await db.getRecentWorkouts(30);
+
+            if (firebaseService.isSignedIn()) {
+                const firestoreWorkouts = await firebaseService.getRecentWorkouts(30);
+                const workoutMap = new Map();
+                workouts.forEach(w => workoutMap.set(w.timestamp + (w.rawDescription || ''), w));
+                firestoreWorkouts.forEach(w => workoutMap.set(w.timestamp + (w.rawDescription || ''), w));
+                workouts = Array.from(workoutMap.values());
+            }
+
+            workouts.sort((a, b) => b.timestamp - a.timestamp);
+
+            const listEl = document.getElementById('workout-history-list');
+
+            if (workouts.length === 0) {
+                listEl.innerHTML = '<div class="workout-empty">No workouts logged yet. Describe your workout above!</div>';
+                return;
+            }
+
+            listEl.innerHTML = '';
+            workouts.forEach(workout => {
+                const card = document.createElement('div');
+                card.className = 'workout-card';
+
+                const dateStr = new Date(workout.timestamp).toLocaleDateString([], {
+                    month: 'short', day: 'numeric'
+                });
+                const timeStr = new Date(workout.timestamp).toLocaleTimeString([], {
+                    hour: '2-digit', minute: '2-digit'
+                });
+
+                const allMuscles = new Set();
+                (workout.exercises || []).forEach(ex => {
+                    (ex.muscleGroups || []).forEach(mg => allMuscles.add(mg));
+                });
+                const muscleHtml = Array.from(allMuscles)
+                    .map(mg => `<span class="muscle-tag">${this.escapeHtml(mg)}</span>`)
+                    .join('');
+
+                card.innerHTML = `
+                    <div class="workout-card-header">
+                        <div class="workout-card-desc">${this.escapeHtml(workout.rawDescription || 'Workout')}</div>
+                    </div>
+                    <div class="workout-card-meta">
+                        <span>${dateStr} ${timeStr}</span>
+                        <span>${workout.totalCaloriesBurned || 0} cal</span>
+                        <span>${workout.totalDuration || 0} min</span>
+                    </div>
+                    <div class="workout-card-muscles">${muscleHtml}</div>
+                    <button class="delete-button">Delete</button>
+                `;
+
+                card.querySelector('.delete-button').addEventListener('click', async () => {
+                    if (confirm('Delete this workout?')) {
+                        if (firebaseService.isSignedIn() && typeof workout.id === 'string') {
+                            await firebaseService.deleteWorkout(workout.id);
+                        } else {
+                            await db.deleteWorkout(workout.id);
+                        }
+                        this.loadWorkoutHistory();
+                    }
+                });
+
+                listEl.appendChild(card);
+            });
+        } catch (error) {
+            console.error('Error loading workout history:', error);
+        }
+    }
+
+    // ========================
+    // Insights Tab
+    // ========================
+
+    setupInsightsTab() {
+        document.getElementById('analyze-health-btn').addEventListener('click', () => this.runHealthAnalysis());
+    }
+
+    async loadInsights() {
+        try {
+            const [weights, meals, workouts] = await Promise.all([
+                this.getMergedWeights(30),
+                this.getMergedMeals(30),
+                this.getMergedWorkouts(30)
+            ]);
+
+            this.renderWeightChart(weights);
+            this.renderCalorieChart(meals, workouts);
+            this.renderWorkoutChart(workouts);
+        } catch (error) {
+            console.error('Error loading insights:', error);
+        }
+    }
+
+    async getMergedWeights(days) {
+        let weights = await db.getRecentWeights(days);
+        if (firebaseService.isSignedIn()) {
+            const fw = await firebaseService.getRecentWeights(days);
+            const map = new Map();
+            weights.forEach(w => map.set(w.timestamp + '' + w.weight, w));
+            fw.forEach(w => map.set(w.timestamp + '' + w.weight, w));
+            weights = Array.from(map.values());
+        }
+        return weights.sort((a, b) => a.timestamp - b.timestamp);
+    }
+
+    async getMergedMeals(days) {
+        let meals = await db.getRecentMeals(days);
+        if (firebaseService.isSignedIn()) {
+            const fm = await firebaseService.getRecentMeals(days);
+            const map = new Map();
+            meals.forEach(m => map.set(m.timestamp + m.foodDescription, m));
+            fm.forEach(m => map.set(m.timestamp + m.foodDescription, m));
+            meals = Array.from(map.values());
+        }
+        return meals.sort((a, b) => a.timestamp - b.timestamp);
+    }
+
+    async getMergedWorkouts(days) {
+        let workouts = await db.getRecentWorkouts(days);
+        if (firebaseService.isSignedIn()) {
+            const fw = await firebaseService.getRecentWorkouts(days);
+            const map = new Map();
+            workouts.forEach(w => map.set(w.timestamp + (w.rawDescription || ''), w));
+            fw.forEach(w => map.set(w.timestamp + (w.rawDescription || ''), w));
+            workouts = Array.from(map.values());
+        }
+        return workouts.sort((a, b) => a.timestamp - b.timestamp);
+    }
+
+    renderWeightChart(weights) {
+        const ctx = document.getElementById('weight-chart').getContext('2d');
+
+        if (this.charts.weight) this.charts.weight.destroy();
+
+        if (weights.length === 0) {
+            this.charts.weight = new Chart(ctx, {
+                type: 'line',
+                data: { labels: ['No data'], datasets: [{ data: [0] }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+            });
+            return;
+        }
+
+        const labels = weights.map(w => {
+            const d = new Date(w.timestamp);
+            return `${d.getMonth() + 1}/${d.getDate()}`;
+        });
+        const data = weights.map(w => w.weight);
+        const unit = weights[0]?.unit || 'lbs';
+
+        this.charts.weight = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label: `Weight (${unit})`,
+                    data,
+                    borderColor: '#007AFF',
+                    backgroundColor: 'rgba(0, 122, 255, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#007AFF'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        ticks: { font: { size: 11 } }
+                    },
+                    x: { ticks: { font: { size: 10 }, maxRotation: 45 } }
+                }
+            }
         });
     }
 
+    renderCalorieChart(meals, workouts) {
+        const ctx = document.getElementById('calorie-chart').getContext('2d');
+
+        if (this.charts.calorie) this.charts.calorie.destroy();
+
+        // Group by date
+        const caloriesByDate = {};
+        const burnedByDate = {};
+
+        meals.forEach(m => {
+            const d = m.date;
+            if (!caloriesByDate[d]) caloriesByDate[d] = 0;
+            caloriesByDate[d] += Math.round((m.caloriesMin + m.caloriesMax) / 2);
+        });
+
+        workouts.forEach(w => {
+            const d = w.date;
+            if (!burnedByDate[d]) burnedByDate[d] = 0;
+            burnedByDate[d] += (w.totalCaloriesBurned || 0);
+        });
+
+        const allDates = [...new Set([...Object.keys(caloriesByDate), ...Object.keys(burnedByDate)])].sort();
+
+        // Limit to last 14 days for readability
+        const recentDates = allDates.slice(-14);
+
+        const labels = recentDates.map(d => {
+            const parts = d.split('-');
+            return `${parseInt(parts[1])}/${parseInt(parts[2])}`;
+        });
+
+        this.charts.calorie = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: 'Calories In',
+                        data: recentDates.map(d => caloriesByDate[d] || 0),
+                        backgroundColor: 'rgba(0, 122, 255, 0.7)'
+                    },
+                    {
+                        label: 'Calories Burned',
+                        data: recentDates.map(d => burnedByDate[d] || 0),
+                        backgroundColor: 'rgba(255, 59, 48, 0.7)'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'top', labels: { font: { size: 11 } } } },
+                scales: {
+                    y: { beginAtZero: true, ticks: { font: { size: 11 } } },
+                    x: { ticks: { font: { size: 10 }, maxRotation: 45 } }
+                }
+            }
+        });
+    }
+
+    renderWorkoutChart(workouts) {
+        const ctx = document.getElementById('workout-chart').getContext('2d');
+
+        if (this.charts.workout) this.charts.workout.destroy();
+
+        // Count workouts per date
+        const countByDate = {};
+        workouts.forEach(w => {
+            const d = w.date;
+            if (!countByDate[d]) countByDate[d] = 0;
+            countByDate[d]++;
+        });
+
+        // Generate last 14 days
+        const dates = [];
+        for (let i = 13; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            const key = d.toISOString().split('T')[0];
+            dates.push(key);
+        }
+
+        const labels = dates.map(d => {
+            const parts = d.split('-');
+            return `${parseInt(parts[1])}/${parseInt(parts[2])}`;
+        });
+
+        this.charts.workout = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Workouts',
+                    data: dates.map(d => countByDate[d] || 0),
+                    backgroundColor: 'rgba(52, 199, 89, 0.7)'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { stepSize: 1, font: { size: 11 } }
+                    },
+                    x: { ticks: { font: { size: 10 }, maxRotation: 45 } }
+                }
+            }
+        });
+    }
+
+    async runHealthAnalysis() {
+        const btn = document.getElementById('analyze-health-btn');
+        btn.disabled = true;
+        btn.textContent = 'Analyzing...';
+
+        try {
+            const [meals, weights, workouts] = await Promise.all([
+                this.getMergedMeals(30),
+                this.getMergedWeights(30),
+                this.getMergedWorkouts(30)
+            ]);
+
+            if (meals.length === 0 && weights.length === 0 && workouts.length === 0) {
+                this.showTemporaryMessage('No data to analyze yet. Start logging!');
+                return;
+            }
+
+            const analysis = await this.claudeService.analyzeHealth(meals, weights, workouts);
+            this.renderAnalysisResults(analysis);
+        } catch (error) {
+            console.error('Error analyzing health:', error);
+            this.showTemporaryMessage('Analysis failed: ' + error.message);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Analyze My Health';
+        }
+    }
+
+    renderAnalysisResults(analysis) {
+        const resultsEl = document.getElementById('analysis-results');
+        resultsEl.style.display = 'block';
+
+        // Summary
+        document.getElementById('analysis-summary').textContent = analysis.summary || '';
+
+        // Highlights
+        const highlightsEl = document.getElementById('analysis-highlights');
+        highlightsEl.innerHTML = '';
+        (analysis.highlights || []).forEach(h => {
+            const div = document.createElement('div');
+            div.className = `highlight-callout ${h.type === 'positive' ? 'positive' : 'attention'}`;
+            div.textContent = h.text;
+            highlightsEl.appendChild(div);
+        });
+
+        // Observations
+        const obsEl = document.getElementById('analysis-observations');
+        if (analysis.observations && analysis.observations.length) {
+            obsEl.innerHTML = '<h4>Observations</h4>';
+            const ul = document.createElement('ul');
+            ul.className = 'analysis-list';
+            analysis.observations.forEach(o => {
+                const li = document.createElement('li');
+                li.textContent = o;
+                ul.appendChild(li);
+            });
+            obsEl.appendChild(ul);
+        }
+
+        // Diet suggestions
+        const dietEl = document.getElementById('analysis-diet');
+        if (analysis.dietSuggestions && analysis.dietSuggestions.length) {
+            dietEl.innerHTML = '<h4>Diet Suggestions</h4>';
+            const ul = document.createElement('ul');
+            ul.className = 'analysis-list';
+            analysis.dietSuggestions.forEach(s => {
+                const li = document.createElement('li');
+                li.textContent = s;
+                ul.appendChild(li);
+            });
+            dietEl.appendChild(ul);
+        }
+
+        // Exercise suggestions
+        const exEl = document.getElementById('analysis-exercise');
+        if (analysis.exerciseSuggestions && analysis.exerciseSuggestions.length) {
+            exEl.innerHTML = '<h4>Exercise Suggestions</h4>';
+            const ul = document.createElement('ul');
+            ul.className = 'analysis-list';
+            analysis.exerciseSuggestions.forEach(s => {
+                const li = document.createElement('li');
+                li.textContent = s;
+                ul.appendChild(li);
+            });
+            exEl.appendChild(ul);
+        }
+    }
+
+    // ========================
     // Settings
+    // ========================
+
     setupSettings() {
         const apiKeyInput = document.getElementById('api-key-input');
         const toggleBtn = document.getElementById('toggle-api-key');
         const infoBtn = document.getElementById('api-key-info-btn');
 
-        // Load saved API key
         apiKeyInput.value = this.claudeService.getApiKey();
 
-        // Save API key on change
         apiKeyInput.addEventListener('input', () => {
             this.claudeService.setApiKey(apiKeyInput.value);
         });
 
-        // Toggle visibility
         toggleBtn.addEventListener('click', () => {
             const type = apiKeyInput.type === 'password' ? 'text' : 'password';
             apiKeyInput.type = type;
         });
 
-        // Show info modal
         infoBtn.addEventListener('click', () => {
             document.getElementById('api-key-modal').classList.add('active');
         });
 
-        // Sign out button
         const signOutBtn = document.getElementById('sign-out-btn');
         signOutBtn.addEventListener('click', async () => {
             if (confirm('Are you sure you want to sign out? Your data will remain saved locally.')) {
@@ -571,9 +1059,11 @@ class CalorieTrackerApp {
         }
     }
 
+    // ========================
     // Modals
+    // ========================
+
     setupModals() {
-        // Date picker modal
         const dateDoneBtn = document.getElementById('date-done-btn');
         const closeDatePicker = document.getElementById('close-date-picker');
         const datePickerModal = document.getElementById('date-picker-modal');
@@ -582,14 +1072,12 @@ class CalorieTrackerApp {
         dateDoneBtn.addEventListener('click', () => {
             this.selectedDate = dateInput.valueAsDate || new Date();
             datePickerModal.classList.remove('active');
-            this.loadHistory();
         });
 
         closeDatePicker.addEventListener('click', () => {
             datePickerModal.classList.remove('active');
         });
 
-        // API key info modal
         const closeApiModal = document.getElementById('close-api-modal');
         const apiKeyModal = document.getElementById('api-key-modal');
 
@@ -597,7 +1085,6 @@ class CalorieTrackerApp {
             apiKeyModal.classList.remove('active');
         });
 
-        // Close modals on backdrop click
         [datePickerModal, apiKeyModal].forEach(modal => {
             modal.addEventListener('click', (e) => {
                 if (e.target === modal) {
@@ -607,12 +1094,14 @@ class CalorieTrackerApp {
         });
     }
 
+    // ========================
     // Auth
+    // ========================
+
     setupAuth() {
         const authModal = document.getElementById('auth-modal');
         const closeAuthModal = document.getElementById('close-auth-modal');
 
-        // Tab switching
         const signinTabBtn = document.getElementById('signin-tab-btn');
         const signupTabBtn = document.getElementById('signup-tab-btn');
         const signinForm = document.getElementById('signin-form');
@@ -632,7 +1121,6 @@ class CalorieTrackerApp {
             signinForm.style.display = 'none';
         });
 
-        // Close modal
         closeAuthModal.addEventListener('click', () => {
             authModal.classList.remove('active');
         });
@@ -658,16 +1146,14 @@ class CalorieTrackerApp {
             const result = await firebaseService.signIn(email, password);
 
             if (result.success) {
-                this.updateFirebaseStatus('✓ Syncing');
+                this.updateFirebaseStatus('Syncing');
                 this.updateAuthUI();
                 authModal.classList.remove('active');
                 this.showTemporaryMessage('Signed in successfully!');
 
-                // Sync any local meals to Firestore, then reload history
                 await this.syncLocalMealsToFirestore();
-                this.loadHistory();
+                this.loadTodayMeals();
 
-                // Clear form
                 document.getElementById('signin-email').value = '';
                 document.getElementById('signin-password').value = '';
             } else {
@@ -713,16 +1199,14 @@ class CalorieTrackerApp {
             const result = await firebaseService.signUp(email, password);
 
             if (result.success) {
-                this.updateFirebaseStatus('✓ Syncing');
+                this.updateFirebaseStatus('Syncing');
                 this.updateAuthUI();
                 authModal.classList.remove('active');
                 this.showTemporaryMessage('Account created successfully!');
 
-                // Sync any local meals to Firestore, then reload history
                 await this.syncLocalMealsToFirestore();
-                this.loadHistory();
+                this.loadTodayMeals();
 
-                // Clear form
                 document.getElementById('signup-email').value = '';
                 document.getElementById('signup-password').value = '';
                 document.getElementById('signup-password-confirm').value = '';
@@ -735,7 +1219,6 @@ class CalorieTrackerApp {
             signupBtn.textContent = 'Create Account';
         });
 
-        // Close on backdrop click
         authModal.addEventListener('click', (e) => {
             if (e.target === authModal) {
                 authModal.classList.remove('active');
@@ -744,77 +1227,56 @@ class CalorieTrackerApp {
     }
 
     async syncLocalMealsToFirestore() {
-        if (!firebaseService.isSignedIn()) {
-            console.log('Sync skipped: not signed in');
-            return;
-        }
+        if (!firebaseService.isSignedIn()) return;
 
         try {
-            // Get all local meals from IndexedDB
             const localMeals = await db.getAllMeals();
-            console.log(`Found ${localMeals.length} local meals in IndexedDB`);
+            if (localMeals.length === 0) return;
 
-            if (localMeals.length === 0) {
-                console.log('No local meals to sync');
-                return;
-            }
-
-            // Get all Firestore meals to check for duplicates
             const firestoreMeals = await firebaseService.getAllMeals();
-            console.log(`Found ${firestoreMeals.length} meals in Firestore`);
-
-            // Create a Set of Firestore meal signatures (timestamp + description)
             const firestoreSignatures = new Set(
                 firestoreMeals.map(m => `${m.timestamp}_${m.foodDescription}`)
             );
 
-            // Only sync meals that don't already exist in Firestore
             const mealsToSync = localMeals.filter(meal => {
                 const signature = `${meal.timestamp}_${meal.foodDescription}`;
                 return !firestoreSignatures.has(signature);
             });
 
-            console.log(`Syncing ${mealsToSync.length} new meals to Firestore (${localMeals.length - mealsToSync.length} already synced)...`);
+            if (mealsToSync.length === 0) return;
 
-            if (mealsToSync.length === 0) {
-                console.log('All local meals already in Firestore');
-                return;
-            }
-
-            // Upload each new meal to Firestore
             let syncedCount = 0;
             for (const meal of mealsToSync) {
-                // Remove the IndexedDB id before syncing
                 const { id, ...mealData } = meal;
                 const result = await firebaseService.addMeal(mealData);
-                if (result) {
-                    syncedCount++;
-                }
+                if (result) syncedCount++;
             }
 
-            console.log(`✓ Successfully synced ${syncedCount} meals to Firestore`);
+            console.log(`Synced ${syncedCount} meals to Firestore`);
         } catch (error) {
             console.error('Error syncing local meals:', error);
-            throw error;
         }
     }
 
     updateAuthUI() {
         const signOutBtn = document.getElementById('sign-out-btn');
         if (firebaseService.isSignedIn() && firebaseService.user) {
-            // Update Firebase status in settings
             const email = firebaseService.user.email;
-            this.updateFirebaseStatus(`✓ Syncing (${email})`);
-            // Show sign-out button
-            if (signOutBtn) {
-                signOutBtn.style.display = 'block';
-            }
+            this.updateFirebaseStatus(`Syncing (${email})`);
+            if (signOutBtn) signOutBtn.style.display = 'block';
         } else {
-            // Hide sign-out button
-            if (signOutBtn) {
-                signOutBtn.style.display = 'none';
-            }
+            if (signOutBtn) signOutBtn.style.display = 'none';
         }
+    }
+
+    // ========================
+    // Utility
+    // ========================
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 }
 

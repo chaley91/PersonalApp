@@ -1,6 +1,6 @@
 // Service Worker for offline support and PWA functionality
 
-const CACHE_NAME = 'calorie-tracker-v4';
+const CACHE_NAME = 'calorie-tracker-v5';
 const urlsToCache = [
     '/',
     '/index.html',

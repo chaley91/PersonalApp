@@ -1,8 +1,5 @@
-// Claude API service for calorie estimation
+// Claude API service for calorie estimation, workout parsing, and health analysis
 // Automatically detects if running locally or on Netlify
-
-const BACKEND_URL_LOCAL = 'http://localhost:3000/api/estimate-calories';
-const BACKEND_URL_NETLIFY = '/.netlify/functions/estimate-calories';
 
 export class ClaudeService {
     constructor() {
@@ -18,14 +15,13 @@ export class ClaudeService {
         this.apiKey = key;
     }
 
-    // Detect if we're running locally or on Netlify
-    getBackendUrl() {
-        // If on localhost, use local server
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-            return BACKEND_URL_LOCAL;
+    // Detect if we're running locally or on Netlify and return the right base
+    _getUrl(endpoint) {
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        if (isLocal) {
+            return `http://localhost:3000/api/${endpoint}`;
         }
-        // Otherwise, use Netlify function
-        return BACKEND_URL_NETLIFY;
+        return `/.netlify/functions/${endpoint}`;
     }
 
     async estimateCalories(foodDescription, conversationContext = null) {
@@ -33,18 +29,16 @@ export class ClaudeService {
             throw new Error('API key not configured. Please add your Anthropic API key in Settings.');
         }
 
-        const backendUrl = this.getBackendUrl();
+        const backendUrl = this._getUrl('estimate-calories');
 
         try {
             const response = await fetch(backendUrl, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     apiKey: this.apiKey,
-                    foodDescription: foodDescription,
-                    conversationContext: conversationContext
+                    foodDescription,
+                    conversationContext
                 })
             });
 
@@ -53,12 +47,73 @@ export class ClaudeService {
                 throw new Error(errorData.error || `Request failed: ${response.statusText}`);
             }
 
-            const estimate = await response.json();
-            return estimate;
-
+            return await response.json();
         } catch (error) {
-            // Check if it's a network error (backend not running)
-            if (error.message.includes('fetch') && backendUrl === BACKEND_URL_LOCAL) {
+            if (error.message.includes('fetch') && backendUrl.includes('localhost')) {
+                throw new Error('Cannot connect to backend server. Make sure the Node.js server is running on port 3000.');
+            }
+            throw new Error(error.message);
+        }
+    }
+
+    async parseWorkout(workoutDescription) {
+        if (!this.apiKey) {
+            throw new Error('API key not configured. Please add your Anthropic API key in Settings.');
+        }
+
+        const backendUrl = this._getUrl('parse-workout');
+
+        try {
+            const response = await fetch(backendUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    apiKey: this.apiKey,
+                    workoutDescription
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `Request failed: ${response.statusText}`);
+            }
+
+            return await response.json();
+        } catch (error) {
+            if (error.message.includes('fetch') && backendUrl.includes('localhost')) {
+                throw new Error('Cannot connect to backend server. Make sure the Node.js server is running on port 3000.');
+            }
+            throw new Error(error.message);
+        }
+    }
+
+    async analyzeHealth(meals, weights, workouts) {
+        if (!this.apiKey) {
+            throw new Error('API key not configured. Please add your Anthropic API key in Settings.');
+        }
+
+        const backendUrl = this._getUrl('analyze-health');
+
+        try {
+            const response = await fetch(backendUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    apiKey: this.apiKey,
+                    meals,
+                    weights,
+                    workouts
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `Request failed: ${response.statusText}`);
+            }
+
+            return await response.json();
+        } catch (error) {
+            if (error.message.includes('fetch') && backendUrl.includes('localhost')) {
                 throw new Error('Cannot connect to backend server. Make sure the Node.js server is running on port 3000.');
             }
             throw new Error(error.message);

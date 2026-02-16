@@ -318,6 +318,210 @@ class FirebaseService {
         return unsubscribe;
     }
 
+    // === Weights ===
+
+    async addWeight(entry) {
+        if (!this.initialized || !this.user) return null;
+
+        try {
+            const weightsRef = collection(this.db, 'users', this.user.uid, 'weights');
+            const docRef = await addDoc(weightsRef, {
+                ...entry,
+                date: entry.date || this.getDateString(entry.timestamp),
+                userId: this.user.uid,
+                syncedAt: new Date()
+            });
+            return docRef.id;
+        } catch (error) {
+            console.error('Error adding weight:', error);
+            return null;
+        }
+    }
+
+    async getWeightsByDate(date) {
+        if (!this.initialized || !this.user) return [];
+
+        try {
+            const dateString = this.getDateString(date);
+            const weightsRef = collection(this.db, 'users', this.user.uid, 'weights');
+            const q = query(
+                weightsRef,
+                where('date', '==', dateString),
+                orderBy('timestamp', 'desc')
+            );
+
+            const querySnapshot = await getDocs(q);
+            const weights = [];
+            querySnapshot.forEach((doc) => {
+                weights.push({ id: doc.id, ...doc.data() });
+            });
+            return weights;
+        } catch (error) {
+            console.error('Error getting weights:', error);
+            return [];
+        }
+    }
+
+    async getRecentWeights(days = 30) {
+        if (!this.initialized || !this.user) return [];
+
+        try {
+            const cutoffDate = new Date();
+            cutoffDate.setDate(cutoffDate.getDate() - days);
+            const cutoffTimestamp = cutoffDate.getTime();
+
+            const weightsRef = collection(this.db, 'users', this.user.uid, 'weights');
+            const q = query(weightsRef, orderBy('timestamp', 'desc'));
+
+            const querySnapshot = await getDocs(q);
+            const weights = [];
+            querySnapshot.forEach((doc) => {
+                const data = doc.data();
+                if (data.timestamp >= cutoffTimestamp) {
+                    weights.push({ id: doc.id, ...data });
+                }
+            });
+            return weights;
+        } catch (error) {
+            console.error('Error getting recent weights:', error);
+            return [];
+        }
+    }
+
+    async getAllWeights() {
+        if (!this.initialized || !this.user) return [];
+
+        try {
+            const weightsRef = collection(this.db, 'users', this.user.uid, 'weights');
+            const q = query(weightsRef, orderBy('timestamp', 'desc'));
+
+            const querySnapshot = await getDocs(q);
+            const weights = [];
+            querySnapshot.forEach((doc) => {
+                weights.push({ id: doc.id, ...doc.data() });
+            });
+            return weights;
+        } catch (error) {
+            console.error('Error getting all weights:', error);
+            return [];
+        }
+    }
+
+    async deleteWeight(weightId) {
+        if (!this.initialized || !this.user) return false;
+
+        try {
+            const weightRef = doc(this.db, 'users', this.user.uid, 'weights', weightId);
+            await deleteDoc(weightRef);
+            return true;
+        } catch (error) {
+            console.error('Error deleting weight:', error);
+            return false;
+        }
+    }
+
+    // === Workouts ===
+
+    async addWorkout(workout) {
+        if (!this.initialized || !this.user) return null;
+
+        try {
+            const workoutsRef = collection(this.db, 'users', this.user.uid, 'workouts');
+            const docRef = await addDoc(workoutsRef, {
+                ...workout,
+                date: workout.date || this.getDateString(workout.timestamp),
+                userId: this.user.uid,
+                syncedAt: new Date()
+            });
+            return docRef.id;
+        } catch (error) {
+            console.error('Error adding workout:', error);
+            return null;
+        }
+    }
+
+    async getWorkoutsByDate(date) {
+        if (!this.initialized || !this.user) return [];
+
+        try {
+            const dateString = this.getDateString(date);
+            const workoutsRef = collection(this.db, 'users', this.user.uid, 'workouts');
+            const q = query(
+                workoutsRef,
+                where('date', '==', dateString),
+                orderBy('timestamp', 'desc')
+            );
+
+            const querySnapshot = await getDocs(q);
+            const workouts = [];
+            querySnapshot.forEach((doc) => {
+                workouts.push({ id: doc.id, ...doc.data() });
+            });
+            return workouts;
+        } catch (error) {
+            console.error('Error getting workouts:', error);
+            return [];
+        }
+    }
+
+    async getRecentWorkouts(days = 30) {
+        if (!this.initialized || !this.user) return [];
+
+        try {
+            const cutoffDate = new Date();
+            cutoffDate.setDate(cutoffDate.getDate() - days);
+            const cutoffTimestamp = cutoffDate.getTime();
+
+            const workoutsRef = collection(this.db, 'users', this.user.uid, 'workouts');
+            const q = query(workoutsRef, orderBy('timestamp', 'desc'));
+
+            const querySnapshot = await getDocs(q);
+            const workouts = [];
+            querySnapshot.forEach((doc) => {
+                const data = doc.data();
+                if (data.timestamp >= cutoffTimestamp) {
+                    workouts.push({ id: doc.id, ...data });
+                }
+            });
+            return workouts;
+        } catch (error) {
+            console.error('Error getting recent workouts:', error);
+            return [];
+        }
+    }
+
+    async getAllWorkouts() {
+        if (!this.initialized || !this.user) return [];
+
+        try {
+            const workoutsRef = collection(this.db, 'users', this.user.uid, 'workouts');
+            const q = query(workoutsRef, orderBy('timestamp', 'desc'));
+
+            const querySnapshot = await getDocs(q);
+            const workouts = [];
+            querySnapshot.forEach((doc) => {
+                workouts.push({ id: doc.id, ...doc.data() });
+            });
+            return workouts;
+        } catch (error) {
+            console.error('Error getting all workouts:', error);
+            return [];
+        }
+    }
+
+    async deleteWorkout(workoutId) {
+        if (!this.initialized || !this.user) return false;
+
+        try {
+            const workoutRef = doc(this.db, 'users', this.user.uid, 'workouts', workoutId);
+            await deleteDoc(workoutRef);
+            return true;
+        } catch (error) {
+            console.error('Error deleting workout:', error);
+            return false;
+        }
+    }
+
     // Cleanup listeners
     cleanup() {
         this.listeners.forEach(unsubscribe => unsubscribe());
